@@ -11,6 +11,9 @@
 # ignore directories of tflite models used during development, because they're huge.
 **/models
 
+# ignore vector visualisation generated during debugging
+*.svg
+
 # ignore pytest working files
 *.pytest_cache
 
