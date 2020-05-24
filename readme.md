@@ -31,7 +31,7 @@ need write access to your **.bashrc** file.
 
 ## Licence
 
-This software is licenced under the GPL v3 license for more details see the LICENCE file.
+This software is (c) 2019 Pete Blacker, Surrey Space Centre & Airbus Defence and Space Ltd. It is licenced under the GPL v3 license for more details see the LICENCE file.
 
 ## Airbus Commercial TFMin - LEON3 Support
 
