@@ -1,0 +1,21 @@
+{
+  "experiment_dir": "test_experiment",
+  "num_epochs": 100,
+  "num_classes": 1001,
+  "batch_size": 1,
+  "width_multiplier": 0.25,
+  "img_width": 224,
+  "img_height": 224,
+  "shuffle": true,
+  "l2_strength": 4e-5,
+  "bias": 0.0,
+  "learning_rate": 1e-3,
+  "batchnorm_enabled": false,
+  "dropout_keep_prob": 0.999,
+  "pretrained_path": "pretrained_weights/mobilenet_v1.pkl",
+  "max_to_keep": 4,
+  "save_model_every": 5,
+  "test_every": 5,
+  "to_train": false,
+  "to_test": true
+}
