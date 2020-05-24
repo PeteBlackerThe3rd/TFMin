@@ -12,8 +12,6 @@
 *.pytest_cache
 
 # ignore test binaries
-*leon_test
-*native_test
 **/bin
 
 # ingore all temporary directories wherever they are
