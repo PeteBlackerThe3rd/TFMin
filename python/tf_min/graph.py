@@ -30,6 +30,7 @@ import copy
 from enum import Enum
 import numpy as np
 import operator
+import tf_min.types as types
 
 
 class TenType(Enum):
@@ -403,7 +404,7 @@ class FuseConvOps(GraphTranslator):
         return self.output_graph
 
 
-def get_dtype_size(d_type):
+"""def get_dtype_size(d_type):
     sizes = {'Float32': 4,
              'Float16': 2,
              'Int32': 4,
@@ -411,7 +412,7 @@ def get_dtype_size(d_type):
              'Int64': 8,
              'Int16': 2,
              'Int8': 1}
-    return sizes[d_type]
+    return sizes[d_type]"""
 
 
 class Tensor:
@@ -479,10 +480,12 @@ class Tensor:
       another tensors memory.
       :return:
       """
-      if self.meta_type is TenMetaType.SUB:
-          return None
+      assert isinstance(self.d_type, types.TenDType), \
+          "Error cannot call get_buffer_size on a tensor without a valid dtype"
+      assert self.meta_type is not TenMetaType.SUB, \
+          "Error cannot call get buffer size on a sub-tensor"
       element_count = np.prod(self.get_tensor_shape(batch_size))
-      buffer_size = (get_dtype_size(self.d_type) *
+      buffer_size = (types.get_dtype_size(self.d_type) *
                      element_count)
       return buffer_size
 
@@ -499,7 +502,7 @@ class Operation:
 
     def __init__(self, source_op=None):
 
-        # self.underlying_op = source_op
+        self.type = None
         self.highlight_color = None
         self.inputs = []
         self.outputs = []

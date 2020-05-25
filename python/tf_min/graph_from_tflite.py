@@ -29,6 +29,7 @@
 import copy
 import numpy as np
 import tf_min.graph as tg
+import tf_min.types as types
 
 # import flatbuffers and tflite schema interface
 import flatbuffers as fb
@@ -50,6 +51,7 @@ TFLITE_OP_TRANSLATIONS = {'CONV_2D': 'Conv2D',
                           'SOFTMAX': 'Softmax',
                           'RESHAPE': 'Reshape',
                           'MAX_POOL_2D': 'MaxPool',
+                          'MIN_POOL_2D': 'MinPool',
                           'ADD': 'Add',
                           'SUB': 'Sub'}
 
@@ -64,6 +66,10 @@ TFLITE_PARAM_TRANSLATIONS = {'Conv2D': {'strideW': 'stride_width',
                                                  'dilationWFactor': 'dilation_width_factor',
                                                  'dilationHFactor': 'dilation_height_factor'},
                              'MaxPool': {'strideW': 'stride_width',
+                                         'strideH': 'stride_height',
+                                         'filterWidth': 'filter_width',
+                                         'filterHeight': 'filter_height'},
+                             'MinPool': {'strideW': 'stride_width',
                                          'strideH': 'stride_height',
                                          'filterWidth': 'filter_width',
                                          'filterHeight': 'filter_height'},
@@ -95,13 +101,13 @@ TFLITE_PARAM_VALUE_TRANSFORMERS = {'Conv2D': {'fused_activation_fn': tflite_act_
 
 
 def tfl_type_to_tfmin(tfl_type):
-    d_types = {0: 'Float32',
-               1: 'Float16',
-               2: 'Int32',
-               3: 'Uint8',
-               4: 'Int64',
-               7: 'Int16',
-               9: 'Int8'}
+    d_types = {0: types.TenDType.FLOAT32,
+               1: types.TenDType.FLOAT16,
+               2: types.TenDType.INT32,
+               3: types.TenDType.UINT8,
+               4: types.TenDType.INT64,
+               7: types.TenDType.INT16,
+               9: types.TenDType.INT8}
     if tfl_type not in d_types:
         return "Unknown_Type"
     return d_types[tfl_type]
@@ -211,6 +217,9 @@ def graph_from_tflite(flatbuffer, sub_graph_idx=0):
         if tensor.creating_op is None and tensor.type != tg.TenType.INPUT:
             tensor.type = tg.TenType.CONSTANT
             # TODO Get value from buffer
-            tensor.value = np.array([[1, 2], [3, 4]]).astype(np.float32)
+            if tensor.d_type == types.TenDType.FLOAT32:
+                tensor.value = np.array([[1, 2], [3, 4]]).astype(np.float32)
+            elif tensor.d_type == types.TenDType.INT32:
+                tensor.value = np.array([[1, 2], [3, 4]]).astype(np.int32)
 
     return new_graph

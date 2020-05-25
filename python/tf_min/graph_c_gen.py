@@ -38,6 +38,8 @@ from tf_min import graph as tfm_g
 from tf_min import types
 from tf_min import cpp_code_gen as c_gen
 
+from tf_min.v2_kernels.pooling import PoolingOpKernel
+
 
 class CodeGenerator:
     """
@@ -136,16 +138,17 @@ class CodeGenerator:
             file = open(os.path.join(self.path, file_name), "w")
             file.write(CodeGenerator.BOILER_PLATE)
             file.write(self.gen_opening_include_guard(file_name))
-            file.write("#include <inttypes.h>\n")
+            file.write("#include <inttypes.h>\n\n")
 
             # Add tensor arena size macro
-            file.write("#define %s_TENSOR_ARENA_SIZE %d /* size of the tensor "
-                       "area in bytes */\n" % (self.prefix.upper(),
-                                               self.tensor_arena_size))
+            file.write("#define %sTENSOR_ARENA_SIZE %d /* size of the tensor "
+                       "area in bytes */\n\n" % (self.prefix.upper(),
+                                                 self.tensor_arena_size))
 
             # Add tesnor weight prototypes
             for weight in self.graph.get_constants():
                 file.write(self.gen_weight_proto(weight))
+            file.write("\n")
 
             file.write(self.gen_closing_include_guard(file_name))
             return True
@@ -159,7 +162,7 @@ class CodeGenerator:
         try:
             file = open(os.path.join(self.path, file_name), "w")
             file.write(CodeGenerator.BOILER_PLATE)
-            file.write("#include <%sweights.h>\n" % self.base_name)
+            file.write("#include <%sweights.h>\n\n" % self.base_name)
 
             # Add tesnor weight definitions
             for weight in self.graph.get_constants():
@@ -172,11 +175,59 @@ class CodeGenerator:
 
     def gen_model_header(self):
         """Generate"""
-        return True
+
+        file_name = self.base_name + "model.h"
+        try:
+            file = open(os.path.join(self.path, file_name), "w")
+            file.write(CodeGenerator.BOILER_PLATE)
+            file.write(self.gen_opening_include_guard(file_name))
+            file.write("#include <%sweights.h>\n\n" % self.base_name)
+
+            # define model function prototype
+            file.write("void %smodel(%s);\n\n" % (
+                self.prefix,
+                self.gen_function_paramers()
+            ))
+
+            file.write(self.gen_closing_include_guard(file_name))
+            return True
+        except IOError as e:
+            print(e)
+            return False
 
     def gen_model_source(self):
         """Generate"""
-        return True
+        file_name = self.base_name + "model.c"
+        try:
+            file = open(os.path.join(self.path, file_name), "w")
+            file.write(CodeGenerator.BOILER_PLATE)
+            file.write("#include <%smodel.h>\n\n" % self.base_name)
+
+            # declare model function body
+            file.write("void %smodel(%s) {\n" % (
+                self.prefix,
+                self.gen_function_paramers()
+            ))
+
+            for operation in self.graph.op_sequence:
+                file.write("    /* %s op (%s) */\n" % (operation.type,
+                                                       operation.label))
+                file.write("    {\n")
+
+                # TODO find matching op_kernel
+
+                if operation.type == 'MaxPool':
+                    pool_kernel = PoolingOpKernel(operation)
+                    file.write(pool_kernel.generate(1))
+
+                file.write("    }\n")
+
+            file.write("}\n")
+
+            return True
+        except IOError as e:
+            print(e)
+            return False
 
     def gen_file_name(self, suffix):
         """
@@ -215,6 +266,26 @@ class CodeGenerator:
         identifier = self.prefix + c_gen.c_safe_identifier(tensor.label)
         return "const uint_32_t %s[];\n" % identifier
 
+    def gen_function_paramers(self):
+        """
+        Method to generate a string containing the parameter definitions for
+        a model function. All parameters are pointers.
+        :return: String
+        """
+        identifiers = ['tensor_arena']
+        d_types = ['void']
+        for input in self.graph.get_inputs():
+            identifiers.append(c_gen.c_safe_identifier(input.label))
+            d_types.append(types.get_dtype_c_type(input.d_type))
+        for output in self.graph.get_outputs():
+            identifiers.append(c_gen.c_safe_identifier(output.label))
+            d_types.append(types.get_dtype_c_type(output.d_type))
+        params = []
+        for idx, identifier in enumerate(identifiers):
+            params.append(d_types[idx] +
+                          " *" + identifier)
+        return ", ".join(params)
+
     def gen_weight_def(self, tensor):
         """
 
@@ -235,8 +306,7 @@ class CodeGenerator:
         # Constant literals are always written as arrays of unsigned 32 bit
         # integers in hex. This is both a dense format and a precise way of
         # representing floating point values in text.
-        struct_type = "f"  # types.get_dtype_struct_type(tensor.d_type)
-        # TODO fix this
+        struct_type = types.get_dtype_struct_type(tensor.d_type)
         value_buffer = st.pack(self.byte_order + struct_type * value_flat.size,
                                *value_flat)
         print("Buffer len [%d]" % len(value_buffer))
@@ -250,7 +320,7 @@ class CodeGenerator:
 
         # write definition as one line (clang format will clean it up)
         int_values = st.unpack(self.byte_order + "I" * int(len(value_buffer)/4),
-                              value_buffer)
+                               value_buffer)
         hex_values = map(hex, int_values)
         return "%s[] = { %s };\n" % (identifier,
-                                   ",".join(hex_values))
+                                     ", ".join(hex_values))

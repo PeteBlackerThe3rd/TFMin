@@ -98,7 +98,8 @@ def load_and_export_model():
     print("-"*80)
 
     code_gen = CodeGenerator(graph=graph_heap_alloc,
-                             prefix="namespace_")
+                             prefix="namespace_",
+                             base_name="squeeze_net")
     code_gen()
 
 
