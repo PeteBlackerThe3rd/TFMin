@@ -24,7 +24,7 @@
     ---------------------------------------------------------------------
 
     This module defined the graph object used to contain the mutable tensor
-	graphs used by TFMin to store and manipulate machine learning models.
+    graphs used by TFMin to store and manipulate machine learning models.
 """
 import copy
 from enum import Enum
@@ -424,7 +424,8 @@ class Tensor:
         self.memory_offset = None
         self.buffer_size = None
         self.data_ptr_str = None
-        # self.underlying_tensor = source_tensor
+        self.label = "not set!"
+        self.d_type = None
         self.highlight_color = None
         self.creation_idx = None
         self.last_use_idx = None
@@ -628,7 +629,7 @@ class Graph:
                 return i
         return None
 
-    def get_peak_memory(self):
+    def get_peak_memory(self, silent=True):
         peak_memory = 0
         for tensor in self.tensors:
             if tensor.type != TenType.INTERMEDIATE:
@@ -640,11 +641,20 @@ class Graph:
                 peak_memory = max(peak_memory,
                                   tensor.memory_offset + tensor.buffer_size)
             else:
-                print("Error, cannot get peak_memory of a graph which "
-                      "contains intermediate tensors that have not been "
-                      "pre-allocated.")
+                if not silent:
+                    print("Error, cannot get peak_memory of a graph which "
+                          "contains intermediate tensors that have not been "
+                          "pre-allocated.")
                 return None
         return peak_memory
+
+    def sequenced(self):
+        """
+        Method to check if this graph has been sequenced correctly
+        :Return: True if this graph has a valid sequence, false otherwise.
+        """
+        # TODO implement this
+        return True
 
     def sequence_ops(self):
 

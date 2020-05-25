@@ -211,5 +211,6 @@ def graph_from_tflite(flatbuffer, sub_graph_idx=0):
         if tensor.creating_op is None and tensor.type != tg.TenType.INPUT:
             tensor.type = tg.TenType.CONSTANT
             # TODO Get value from buffer
+            tensor.value = np.array([[1, 2], [3, 4]]).astype(np.float32)
 
     return new_graph
