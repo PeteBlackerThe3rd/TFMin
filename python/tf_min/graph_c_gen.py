@@ -38,6 +38,8 @@ from tf_min import graph as tfm_g
 from tf_min import types
 from tf_min import cpp_code_gen as c_gen
 
+from tf_min.v2_kernels import *
+from tf_min.v2_kernels.base_op_kernel import BaseOpKernel
 from tf_min.v2_kernels.pooling import PoolingOpKernel
 
 
@@ -49,7 +51,7 @@ class CodeGenerator:
                    "converter.\n    Do not edit.\n*/\n"
 
     def __init__(self, graph, base_name="model_", prefix="", path=".",
-                 clang_format=None, byte_order="@"):
+                 clang_format=None, byte_order="@", batch_size=1):
         """
 
         """
@@ -65,6 +67,7 @@ class CodeGenerator:
             self.path = path
             self.clang_format = clang_format
             self.byte_order = byte_order
+            self.batch_size = batch_size
             self.export_ready = True
         else:
             # model is not ready for export,
@@ -76,6 +79,7 @@ class CodeGenerator:
             self.path = None
             self.clang_format = None
             self.byte_order = None
+            self.batch_size = 1
             self.export_ready = False
 
     def __call__(self, silent=False):
@@ -195,12 +199,27 @@ class CodeGenerator:
             print(e)
             return False
 
+    @staticmethod
+    def find_kernel(operation, tags):
+        """
+
+        :param operation:
+        :param tags:
+        :return:
+        """
+        for kernel in BaseOpKernel.__subclasses__():
+            if kernel.matches(operation):
+              return kernel
+
+        return None
+
     def gen_model_source(self):
         """Generate"""
         file_name = self.base_name + "model.c"
         try:
             file = open(os.path.join(self.path, file_name), "w")
             file.write(CodeGenerator.BOILER_PLATE)
+            file.write("#include <float.h>\n")
             file.write("#include <%smodel.h>\n\n" % self.base_name)
 
             # declare model function body
@@ -214,11 +233,14 @@ class CodeGenerator:
                                                        operation.label))
                 file.write("    {\n")
 
-                # TODO find matching op_kernel
-
-                if operation.type == 'MaxPool':
-                    pool_kernel = PoolingOpKernel(operation)
-                    file.write(pool_kernel.generate(1))
+                kernel = CodeGenerator.find_kernel(operation, tags=[])
+                if kernel is not None:
+                    kernel_instance = kernel(operation)
+                    file.write(kernel_instance.generate(self.batch_size,
+                                                        self.prefix))
+                else:
+                    print("Error: Couldn't find kernel to generate "
+                          "code for %s operation." % operation.type)
 
                 file.write("    }\n")
 
@@ -264,7 +286,7 @@ class CodeGenerator:
         :return: String, the prototype of the weights const global definition
         """
         identifier = self.prefix + c_gen.c_safe_identifier(tensor.label)
-        return "const uint_32_t %s[];\n" % identifier
+        return "const uint32_t %s[];\n" % identifier
 
     def gen_function_paramers(self):
         """

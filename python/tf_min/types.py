@@ -73,6 +73,21 @@ def get_dtype_c_type(d_type):
     return c_types[d_type]
 
 
+def get_dtype_lowest(d_type):
+    lowest_values = {TenDType.FLOAT64: "DBL_MIN",
+                     TenDType.FLOAT32: "FLT_MIN",
+                     TenDType.FLOAT16: "#TODO#",
+                     TenDType.INT64: "-9223372036854775808",
+                     TenDType.INT32: "-2147483648",
+                     TenDType.INT16: "-32768",
+                     TenDType.INT8: "-128",
+                     TenDType.UINT64: "0",
+                     TenDType.UINT32: "0",
+                     TenDType.UINT16: "0",
+                     TenDType.UINT8: "0"}
+    return lowest_values[d_type]
+
+
 def get_dtype_struct_type(d_type):
     c_types = {TenDType.FLOAT64: "d",
                TenDType.FLOAT32: "f",

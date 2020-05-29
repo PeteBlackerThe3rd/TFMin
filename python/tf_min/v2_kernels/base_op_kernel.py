@@ -27,6 +27,8 @@
     code for the v2 architecture.
 """
 import tf_min.graph as tg
+import tf_min.types as types
+from tf_min import cpp_code_gen as c_gen
 
 
 class BaseOpKernel:
@@ -44,6 +46,7 @@ class BaseOpKernel:
         )
 
         self.operation = operation
+        self.tags = []
 
     @staticmethod
     def matches(operation):
@@ -64,12 +67,51 @@ class BaseOpKernel:
         """
         return "base"
 
-    def generate(self, batch_size=1):
+    def generate(self, batch_size=1, prefix=""):
         """
         Overridable method to generate the ansi-c code of this operation.
+        This super class method generates the input and output pointers
+        mapped onto th tensor arena
         :return: String,
         """
-        return "/* generate called on BaseOpKernel! */\n"
+        buffer_declarations = ""
+        for idx, input in enumerate(self.operation.inputs):
+          print("Generating buff declarations for tensor type [%s]" % input.type)
+          if input.type == tg.TenType.INPUT:
+              buffer_declarations += "    const {0} *input_{1} = {2};\n".format(
+                  types.get_dtype_c_type(input.d_type),
+                  idx,
+                  c_gen.c_safe_identifier(input.label)
+              )
+          elif input.type == tg.TenType.CONSTANT:
+              buffer_declarations += "    const {0} *input_{1} = ({0}*){2}{3};\n".format(
+                  types.get_dtype_c_type(input.d_type),
+                  idx,
+                  prefix,
+                  c_gen.c_safe_identifier(input.label)
+              )
+          else:
+              buffer_declarations += \
+                "    const {0} *input_{1} = ({0}*)tensor_arena + {2};\n".format(
+                  types.get_dtype_c_type(input.d_type),
+                  idx,
+                  int(input.memory_offset / types.get_dtype_size(input.d_type))
+                )
+        for idx, output in enumerate(self.operation.outputs):
+          if output.type == tg.TenType.OUTPUT:
+            buffer_declarations += "    {0} *output_{1} = {2};\n".format(
+              types.get_dtype_c_type(output.d_type),
+              idx,
+              c_gen.c_safe_identifier(output.label)
+            )
+          else:
+            buffer_declarations += \
+              "    {0} *output_{1} = ({0}*)tensor_arena + {2};\n".format(
+                types.get_dtype_c_type(output.d_type),
+                idx,
+                int(output.memory_offset / types.get_dtype_size(output.d_type))
+              )
+        return buffer_declarations
 
     @staticmethod
     def process_template(template, values):

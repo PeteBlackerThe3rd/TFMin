@@ -430,6 +430,7 @@ class Tensor:
         self.highlight_color = None
         self.creation_idx = None
         self.last_use_idx = None
+        self.data_layout = None
 
         # sub/super tensor properties
         self.meta_type = TenMetaType.SINGLE
