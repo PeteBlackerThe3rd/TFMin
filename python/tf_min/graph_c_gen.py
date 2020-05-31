@@ -91,6 +91,10 @@ class CodeGenerator:
             print("Error: Cannot generate code for a graph which isn't ready")
             return
 
+        # ensure the output path exists
+        if not os.path.exists(self.path):
+          os.mkdir(self.path)
+
         # Generate the four source files containing this model
         if not silent:
             print("Generating weight header.")
@@ -219,8 +223,22 @@ class CodeGenerator:
         try:
             file = open(os.path.join(self.path, file_name), "w")
             file.write(CodeGenerator.BOILER_PLATE)
-            file.write("#include <float.h>\n")
-            file.write("#include <%smodel.h>\n\n" % self.base_name)
+            # file.write("#include <float.h>\n")
+            file.write("#include <%smodel.h>\n" % self.base_name)
+
+            # find the operation kernel for each layer and find all
+            # dependencies
+            dependencies = {}
+            for operation in self.graph.op_sequence:
+                kernel = CodeGenerator.find_kernel(operation, tags=[])
+                if kernel is not None:
+                    kernel_instance = kernel(operation)
+                    dependencies.update(kernel_instance.get_dependencies())
+            print("Found [%d] dependencies\n%s" % (len(dependencies),
+                                                   dependencies))
+            for dependency in dependencies.keys():
+                file.write("#include <%s>\n" % dependency)
+            file.write("\n")
 
             # declare model function body
             file.write("void %smodel(%s) {\n" % (
@@ -228,6 +246,7 @@ class CodeGenerator:
                 self.gen_function_paramers()
             ))
 
+            # write a code block for each operation
             for operation in self.graph.op_sequence:
                 file.write("    /* %s op (%s) */\n" % (operation.type,
                                                        operation.label))
@@ -286,7 +305,7 @@ class CodeGenerator:
         :return: String, the prototype of the weights const global definition
         """
         identifier = self.prefix + c_gen.c_safe_identifier(tensor.label)
-        return "const uint32_t %s[];\n" % identifier
+        return "extern const uint32_t %s[];\n" % identifier
 
     def gen_function_paramers(self):
         """
@@ -316,14 +335,16 @@ class CodeGenerator:
         """
         identifier = self.prefix + c_gen.c_safe_identifier(tensor.label)
 
+        if tensor.value is None:
+          print("Tensor [%s] value is None!" % tensor.label)
         print("tensor value is [%s] type [%s]" % (str(tensor.value),
-                                                  type(tensor.value)))
+                                                 type(tensor.value)))
 
         # the value of constant tensors is stored in a np.ndarray the layout
         # will appropriate for direct conversion to a c array layout
         value_flat = tensor.value.flatten(order='C')
-        print("value_flat is [%s]" % str(value_flat))
-        print("flat size is [%s]" % value_flat.size)
+        # print("value_flat is [%s]" % str(value_flat))
+        # print("flat size is [%s]" % value_flat.size)
 
         # Constant literals are always written as arrays of unsigned 32 bit
         # integers in hex. This is both a dense format and a precise way of
@@ -331,18 +352,18 @@ class CodeGenerator:
         struct_type = types.get_dtype_struct_type(tensor.d_type)
         value_buffer = st.pack(self.byte_order + struct_type * value_flat.size,
                                *value_flat)
-        print("Buffer len [%d]" % len(value_buffer))
+        # print("Buffer len [%d]" % len(value_buffer))
 
         # pad the buffer to a multiple of 4 bytes
         pad_len = 4 - len(value_buffer) % 4
         if pad_len == 4:
             pad_len = 0
         value_buffer += bytearray([0] * pad_len)
-        print("Buffer len padd [%d]" % len(value_buffer))
+        # print("Buffer len padd [%d]" % len(value_buffer))
 
         # write definition as one line (clang format will clean it up)
         int_values = st.unpack(self.byte_order + "I" * int(len(value_buffer)/4),
                                value_buffer)
         hex_values = map(hex, int_values)
-        return "%s[] = { %s };\n" % (identifier,
-                                     ", ".join(hex_values))
+        return "const uint32_t %s[] = { %s };\n" % (identifier,
+                                                    ", ".join(hex_values))

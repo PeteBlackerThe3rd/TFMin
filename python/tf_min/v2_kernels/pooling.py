@@ -28,11 +28,12 @@
 """
 import tf_min.v2_kernels.base_op_kernel as base
 import tf_min.types as types
+import tf_min.activation_fns as act_fns
 
 
 class PoolingOpKernel(base.BaseOpKernel):
 
-    MAX_POOL_TEMPLATE = """
+    MIN_MAX_POOL_TEMPLATE = """
     for (int batch = 0; batch < batches; ++batch) {
       for (int out_y = 0; out_y < output_height; ++out_y) {
         for (int out_x = 0; out_x < output_width; ++out_x) {
@@ -46,7 +47,7 @@ class PoolingOpKernel(base.BaseOpKernel):
             const int filter_y_start = in_y_origin > 0 ? 0 : -in_y_origin;
             const int filter_y_end = (input_height - in_y_origin < filter_height) ? input_height - in_y_origin : filter_height;
             
-            D_TYPE max = lowest_possible;
+            D_TYPE value = MIN_MAX_INITIAL;
             for (int filter_y = filter_y_start; filter_y < filter_y_end;
                  ++filter_y) {
               for (int filter_x = filter_x_start; filter_x < filter_x_end;
@@ -57,22 +58,68 @@ class PoolingOpKernel(base.BaseOpKernel):
                 D_TYPE input_value = input_0[batch * input_d1_coeff + 
                                              in_y * input_d2_coeff +
                                              in_x * input_d3_coeff +
-                                             channel * input_d4_coeff];
-                if (input_value > max)
-                  max = input_value;
+                                             channel * input_d4_coeff +
+                                             input_d_base];
+                if (MIN_MAX_COMPARISON)
+                  value = input_value;
               }
             }
-            // activation function will go here
-            
+            // Fused activation function
+            ACTIVATION_FN
             output_0[batch * output_d1_coeff +
                      out_y * output_d2_coeff +
                      out_x * output_d3_coeff +
-                     channel * output_d4_coeff] = max;
+                     channel * output_d4_coeff +
+                     output_d_base] = value;
           }
         }
       }
     }
-    """
+"""
+    AVG_POOL_TEMPLATE = """
+    for (int batch = 0; batch < batches; ++batch) {
+      for (int out_y = 0; out_y < output_height; ++out_y) {
+        for (int out_x = 0; out_x < output_width; ++out_x) {
+          for (int channel = 0; channel < depth; ++channel) {
+            const int in_x_origin = (out_x * stride_width) - padding_width;
+            const int in_y_origin = (out_y * stride_height) - padding_height;
+            // Compute the boundaries of the filter region clamped so as to
+            // ensure that the filter window fits in the input array.
+            const int filter_x_start = in_x_origin > 0 ? 0 : -in_x_origin;
+            const int filter_x_end = (input_width - in_x_origin < filter_width) ? input_width - in_x_origin : filter_width;
+            const int filter_y_start = in_y_origin > 0 ? 0 : -in_y_origin;
+            const int filter_y_end = (input_height - in_y_origin < filter_height) ? input_height - in_y_origin : filter_height;
+            
+            SUM_DATA_TYPE sum = 0;
+            for (int filter_y = filter_y_start; filter_y < filter_y_end;
+                 ++filter_y) {
+              for (int filter_x = filter_x_start; filter_x < filter_x_end;
+                   ++filter_x) {
+                const int in_x = in_x_origin + filter_x;
+                const int in_y = in_y_origin + filter_y;
+                
+                D_TYPE input_value = input_0[batch * input_d1_coeff + 
+                                             in_y * input_d2_coeff +
+                                             in_x * input_d3_coeff +
+                                             channel * input_d4_coeff +
+                                             input_d_base];
+                sum += input_value;
+              }
+            }
+            D_TYPE value = sum / ((filter_x_end - filter_x_start) * (filter_y_end - filter_y_start));
+            
+            // Fused activation function
+            ACTIVATION_FN
+            output_0[batch * output_d1_coeff +
+                     out_y * output_d2_coeff +
+                     out_x * output_d3_coeff +
+                     channel * output_d4_coeff +
+                     output_d_base] = value;
+          }
+        }
+      }
+    }
+"""
 
     def __init__(self, operation):
         """
@@ -101,21 +148,78 @@ class PoolingOpKernel(base.BaseOpKernel):
       """
       return "testing"
 
+    def get_dependencies(self):
+        """
+        Method which returns a dictionary of include dependencies where
+        the keys are the strings of the files required
+        :return: Dictionary of dependencies
+        """
+        dependencies = {}
+
+        # if the data type is float then float.h is required for constants
+        if self.operation.inputs[0].d_type in [types.TenDType.FLOAT64,
+                                               types.TenDType.FLOAT32,
+                                               types.TenDType.FLOAT16]:
+            dependencies['float.h'] = True
+
+        # if the tanh fused activation function is used then math.h is requred
+        if (
+          'fused_activation_fn' in self.operation.params and
+          self.operation.params['fused_activation_fn'] == act_fns.ActType.TANH
+        ):
+            dependencies['math.h'] = True
+
+        return dependencies
+
     def generate(self, batch_size=1, prefix=""):
       """
       Overridable method to generate the ansi-c code of this operation.
       :return: String,
       """
+      # prepare values for code generate
       input_shape = self.operation.inputs[0].get_tensor_shape(batch_size)
       output_shape = self.operation.outputs[0].get_tensor_shape(batch_size)
+      min_max_comparison = ""
+      min_max_initial = ""
+      if self.operation.type == "MaxPool":
+        min_max_comparison = "input_value > value"
+        min_max_initial = types.get_dtype_lowest(
+          self.operation.inputs[0].d_type
+        )
+      elif self.operation.type == "MinPool":
+        min_max_comparison = "input_value < value"
+        min_max_initial = types.get_dtype_highest(
+          self.operation.inputs[0].d_type
+        )
+      sum_d_type = types.get_dtype_c_type(self.operation.inputs[0].d_type)
+      if (self.operation.type == "AvgPool" and
+              types.is_integer(self.operation.inputs[0].d_type)):
+          higher_d_type = types.get_higher_range_type(
+            self.operation.inputs[0].d_type
+          )
+          sum_d_type = types.get_dtype_c_type(higher_d_type)
+
+
+      padding = super().compute_padding(
+        filter_width=self.operation.params['filter_width'],
+        filter_height=self.operation.params['filter_height']
+      )
+
+      # Get the offset function coefficients for the input and output tensors
       (input_d1_coeff,
        input_d2_coeff,
        input_d3_coeff,
-       input_d4_coeff) = [1, 2, 3, 4]  # TODO make layout object and use here
+       input_d4_coeff,
+       input_d_base) = \
+        self.operation.inputs[0].shape.get_layout_addressing_coeffs()
       (output_d1_coeff,
        output_d2_coeff,
        output_d3_coeff,
-       output_d4_coeff) = [1, 2, 3, 4]  # TODO make layout object and use here
+       output_d4_coeff,
+       output_d_base) = \
+        self.operation.outputs[0].shape.get_layout_addressing_coeffs()
+
+      # populate template dictionary used to transform template into final code
       template_values = {
         'batches': input_shape[0],
         'depth': input_shape[3],
@@ -125,27 +229,40 @@ class PoolingOpKernel(base.BaseOpKernel):
         'output_height': output_shape[2],
         'stride_width': self.operation.params['stride_width'],
         'stride_height': self.operation.params['stride_height'],
-        'padding_width': 0,  # TODO comp actual values
-        'padding_height': 0,
+        'padding_width': padding['pad_width'],
+        'padding_height': padding['pad_height'],
         'filter_width': self.operation.params['filter_width'],
         'filter_height': self.operation.params['filter_height'],
         'D_TYPE': types.get_dtype_c_type(self.operation.inputs[0].d_type),
-        'lowest_possible': types.get_dtype_lowest(self.operation.inputs[0].d_type),
+        'SUM_DATA_TYPE': sum_d_type,
+        'MIN_MAX_COMPARISON': min_max_comparison,
+        'MIN_MAX_INITIAL': min_max_initial,
         'input_d1_coeff': input_d1_coeff,
         'input_d2_coeff': input_d2_coeff,
         'input_d3_coeff': input_d3_coeff,
         'input_d4_coeff': input_d4_coeff,
+        'input_d_base': input_d_base,
         'output_d1_coeff': output_d1_coeff,
         'output_d2_coeff': output_d2_coeff,
         'output_d3_coeff': output_d3_coeff,
-        'output_d4_coeff': output_d4_coeff
+        'output_d4_coeff': output_d4_coeff,
+        'output_d_base': output_d_base,
+        'ACTIVATION_FN': super().gen_act_code()
       }
 
       # generate buffer declarations
       code = super().generate(batch_size, prefix)
-      code += base.BaseOpKernel.process_template(
-          PoolingOpKernel.MAX_POOL_TEMPLATE,
-          template_values
-      )
+
+      # merge template to generate c implementation of pooling layer
+      if self.operation.type == 'AvgPool':
+        code += base.BaseOpKernel.process_template(
+            PoolingOpKernel.AVG_POOL_TEMPLATE,
+            template_values
+        )
+      else:
+        code += base.BaseOpKernel.process_template(
+            PoolingOpKernel.MIN_MAX_POOL_TEMPLATE,
+            template_values
+        )
 
       return code

@@ -404,15 +404,125 @@ class FuseConvOps(GraphTranslator):
         return self.output_graph
 
 
-"""def get_dtype_size(d_type):
-    sizes = {'Float32': 4,
-             'Float16': 2,
-             'Int32': 4,
-             'Uint8': 1,
-             'Int64': 8,
-             'Int16': 2,
-             'Int8': 1}
-    return sizes[d_type]"""
+class TensorShape:
+    """
+    Class which stores and manipulates the shape and data layout of a tensor
+    """
+
+    def __init__(self, initial_shape):
+
+        self.shape = initial_shape
+
+        # set default dimension ordering
+        self.dim_order = list(range(len(initial_shape)))
+
+        # set default dimension extra steps, this array defines the
+        # additional offset step for each dimension in units of the step of
+        # the next higher dimension (1 in the case of the highest dimensions)
+        self.dim_extra_steps = [0] * len(initial_shape)
+
+        # initial base offset, the offset from the start of the buffer to the
+        # first element. Usually zero unless this is a split sub-tensor.
+        self.base_offset = 0
+
+    def copy(self):
+        new_copy = TensorShape(self.shape.copy())
+        new_copy.dim_order = self.dim_order.copy()
+        new_copy.dim_extra_steps = self.dim_extra_steps
+        new_copy.base_offset = self.base_offset
+        return new_copy
+
+    def get_shape(self, batch_size=None):
+        shape = []
+        for dim in self.shape:
+            if dim == -1 and batch_size is not None:
+                dim = batch_size
+            shape.append(dim)
+        return shape
+
+    def get_element_count(self, batch_size=1):
+        shape = self.get_shape(batch_size)
+        return np.prod(shape)
+
+    def get_layout_addressing_coeffs(self, batch_size=1):
+        """
+        Method to compute and return the index coefficients needed to index
+        into this shape and layout of data.
+        :return: tuple of (coeff_0, ..., coeff_n, base_offset)
+        """
+        # TODO currently doesn't compute dim_extra_steps
+        coeffs = []
+
+        for idx, order in enumerate(self.dim_order):
+          coeff = 1
+          for order in self.dim_order[idx+1:]:
+            dim = self.shape[order]
+            if dim == -1:
+              dim = batch
+            coeff *= dim
+          coeffs.append(coeff)
+
+        return coeffs + [self.base_offset]
+
+    def test_offset(self, i0, i1, i2, i3, batch_size=1):
+        dims_data = self.get_shape(batch_size=batch_size)
+        offset = ((i0 * dims_data[1] + i1) * dims_data[2] + i2) * dims_data[3] + i3
+        return offset
+
+    def test_addressing_coeffs(self):
+        print("Starting addressing coeffs test.")
+        batch_size = 1
+        coeffs = self.get_layout_addressing_coeffs(batch_size=batch_size)
+        dim_sizes = self.get_shape(batch_size=batch_size)
+        element_count = np.prod(dim_sizes)
+
+        print("Shape %s element count [%d]" % (dim_sizes, element_count))
+
+        for i0 in range(dim_sizes[0]):
+          for i1 in range(dim_sizes[1]):
+            for i2 in range(dim_sizes[2]):
+              for i3 in range(dim_sizes[3]):
+                test_offset = self.test_offset(i0, i1, i2, i3, batch_size)
+                coeff_offset = i0 * coeffs[0] + i1 * coeffs[1] + i2 * coeffs[2] + i3 * coeffs[3] + coeffs[4]
+
+                if test_offset != coeff_offset:
+                  print("Error at index [%d][%d][%d][%d]" % (i0, i1, i2, i3))
+                  print("Coeff offset doesn't match TFLite offset fn!")
+                  return
+
+                if test_offset < 0 or test_offset >= element_count:
+                  print("Error at index [%d][%d][%d][%d]" % (i0, i1, i2, i3))
+                  print("TFLite offset out of range!")
+                  return
+
+                if coeff_offset < 0 or coeff_offset >= element_count:
+                  print("Error at index [%d][%d][%d][%d]" % (i0, i1, i2, i3))
+                  print("coeff offset out of range!")
+                  return
+
+        print("Coeff adressing test passed.")
+
+
+    def __getitem__(self, key):
+        assert isinstance(key, int), "Error TensorShape __getitem__ key " \
+                                     "must be an integer"
+        assert key >= 0 and key < len(self.shape), \
+          "Error TensorShape __getitem__ key [%d] out of range" % key
+        return self.shape[key]
+
+    def __setitem__(self, key, value):
+        assert isinstance(key, int), "Error TensorShape __setitem__ key " \
+                                     "must be an integer"
+        assert key >= 0 and key < len(self.shape), "Error TensorShape " \
+                                                   "__setitem__ key out of " \
+                                                   "range"
+        self.shape[key] = value
+
+    def __str__(self):
+        return str(self.shape)
+
+    def len(self):
+        return len(self.shape)
 
 
 class Tensor:
@@ -431,6 +541,7 @@ class Tensor:
         self.creation_idx = None
         self.last_use_idx = None
         self.data_layout = None
+        self.shape = None
 
         # sub/super tensor properties
         self.meta_type = TenMetaType.SINGLE
@@ -464,12 +575,8 @@ class Tensor:
             self.safe_overlap_bytes = source_tensor.safe_overlap_bytes
 
     def get_tensor_shape(self, batch_size=None):
-        shape = []
-        for dim in self.shape:
-            if dim == -1 and batch_size is not None:
-                dim = batch_size
-            shape.append(dim)
-        return shape
+        assert self.shape is not None, "Error Tensor.shape is None"
+        return self.shape.get_shape(batch_size=batch_size)
 
     def allocated(self):
         return self.memory_offset is not None
@@ -652,6 +759,26 @@ class Graph:
                 return None
         return peak_memory
 
+    def get_nth_operation_of_type(self, nth, op_type):
+        """
+        Method to return the nth operation of the given type in the sequence
+        of this graph. Useful for manual manipulation of graphs.
+        :param nth: Int, the instance of operation to return
+        :param op_type: String, the type of operation to search for.
+        :return: TFMin.Operation or None if no operation was found.
+        """
+        assert self.sequenced(), "Error: Cannot get nth operation of type on " \
+                                 "a graph which isn't sequenced."
+
+        n_found = 0
+        for operation in self.op_sequence:
+            if operation.type == op_type:
+                if n_found == nth:
+                    return operation
+                else:
+                    n_found += 1
+        return None
+
     def sequenced(self):
         """
         Method to check if this graph has been sequenced correctly
@@ -820,3 +947,63 @@ class Graph:
             for output in opr.outputs:
                element_count += np.prod(output.shape)
         return element_count
+
+    @staticmethod
+    def mark_not_orphaned(item):
+        """
+
+        :param item:
+        :return:
+        """
+        item.orphaned = False
+
+        if isinstance(item, Tensor):
+          if item.creating_op is not None:
+            Graph.mark_not_orphaned(item.creating_op)
+        elif isinstance(item, Operation):
+          for input in item.inputs:
+            Graph.mark_not_orphaned(input)
+
+
+    def find_orphans(self, print_debug=False):
+        """
+        Method which looks for unconnected tensor and operations and returns
+        a tuple of containing lists of each type.
+        :param print: Boolean, print useful debugging information
+        :return: Tuple, ([List of tensor orphans], [List of op orphans])
+        """
+
+        # mark all tensors and ops as orphans
+        for tensor in self.tensors:
+          tensor.orphaned = True
+        for opr in self.ops:
+          opr.orphaned = True
+
+        # recurssively mark all tensors and ops connected to an output as
+        # not orphans
+        for output in self.get_outputs():
+          self.mark_not_orphaned(output)
+
+        # collect orphaned tensors and operations
+        orphaned_tensors = []
+        orphaned_ops = []
+        for tensor in self.tensors:
+          if tensor.orphaned:
+            orphaned_tensors.append(tensor)
+        for opr in self.ops:
+          if opr.orphaned:
+            orphaned_ops.append(opr)
+
+        # remove orphaned attrbutes
+        for tensor in self.tensors:
+          del tensor.orphaned
+        for opr in self.ops:
+          del opr.orphaned
+
+        if print_debug:
+          print("Found [%d] orphans [%d] tensors and [%d] operations" %
+                ((len(orphaned_ops) + len(orphaned_tensors)),
+                 len(orphaned_tensors),
+                 len(orphaned_ops)))
+
+        return (orphaned_tensors, orphaned_ops)

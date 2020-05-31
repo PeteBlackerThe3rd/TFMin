@@ -30,20 +30,25 @@ from enum import Enum
 
 
 class TenDType(Enum):
-  FLOAT64 = 1
-  FLOAT32 = 2
-  FLOAT16 = 3
-  INT64 = 4
-  INT32 = 5
-  INT16 = 6
-  INT8 = 7
-  UINT64 = 8
-  UINT32 = 9
-  UINT16 = 10
-  UINT8 = 11
+    FLOAT64 = 1
+    FLOAT32 = 2
+    FLOAT16 = 3
+    INT64 = 4
+    INT32 = 5
+    INT16 = 6
+    INT8 = 7
+    UINT64 = 8
+    UINT32 = 9
+    UINT16 = 10
+    UINT8 = 11
 
 
 def get_dtype_size(d_type):
+    """
+    Function which returns the storage size of this data type in bytes.
+    :param d_type: TenDType, the data type
+    :return: Int, it's storage size in bytes
+    """
     sizes = {TenDType.FLOAT64: 8,
              TenDType.FLOAT32: 4,
              TenDType.FLOAT16: 2,
@@ -59,6 +64,12 @@ def get_dtype_size(d_type):
 
 
 def get_dtype_c_type(d_type):
+    """
+    Function which returns a string describing the equivalent c type of this
+    data type
+    :param d_type: TenDType, the data type
+    :return: String
+    """
     c_types = {TenDType.FLOAT64: "double",
                TenDType.FLOAT32: "float",
                TenDType.FLOAT16: "uint16_t",  # Note c half libs use this type
@@ -74,6 +85,14 @@ def get_dtype_c_type(d_type):
 
 
 def get_dtype_lowest(d_type):
+    """
+    Function to return a string describing the lowest possible value this
+    data type can store in C code.
+    This return an integer in a string for integer types and the name
+    of a macro defined in float.h for float types
+    :param d_type: TenDType, the data type
+    :return: String
+    """
     lowest_values = {TenDType.FLOAT64: "DBL_MIN",
                      TenDType.FLOAT32: "FLT_MIN",
                      TenDType.FLOAT16: "#TODO#",
@@ -88,7 +107,90 @@ def get_dtype_lowest(d_type):
     return lowest_values[d_type]
 
 
+def get_dtype_highest(d_type):
+    """
+    Function to return a string describing the highest possible value this
+    data type can store in C code.
+    This return an integer in a string for integer types and the name
+    of a macro defined in float.h for float types
+    :param d_type: TenDType, the data type
+    :return: String
+    """
+    highest_values = {TenDType.FLOAT64: "DBL_MAX",
+                      TenDType.FLOAT32: "FLT_MAX",
+                      TenDType.FLOAT16: "#TODO#",
+                      TenDType.INT64: "9223372036854775807",
+                      TenDType.INT32: "2147483647",
+                      TenDType.INT16: "32767",
+                      TenDType.INT8: "127",
+                      TenDType.UINT64: "18446744073709551615",
+                      TenDType.UINT32: "4294967295",
+                      TenDType.UINT16: "65536",
+                      TenDType.UINT8: "255"}
+    return highest_values[d_type]
+
+
+def is_float(d_type):
+    if d_type in [TenDType.FLOAT64, TenDType.FLOAT32, TenDType.FLOAT16]:
+        return True
+    else:
+        return False
+
+
+def is_integer(d_type):
+    if d_type in [TenDType.INT64, TenDType.INT32,
+                  TenDType.INT16, TenDType.INT8,
+                  TenDType.UINT64, TenDType.UINT32,
+                  TenDType.UINT16, TenDType.UINT8]:
+        return True
+    else:
+        return False
+
+
+def is_signed_integer(d_type):
+    if d_type in [TenDType.INT64, TenDType.INT32,
+                  TenDType.INT16, TenDType.INT8]:
+        return True
+    else:
+        return False
+
+
+def is_unsigned_integer(d_type):
+    if d_type in [TenDType.UINT64, TenDType.UINT32,
+                  TenDType.UINT16, TenDType.UINT8]:
+        return True
+    else:
+        return False
+
+
+def get_higher_range_type(d_type):
+    """
+    Function to return the next higher range type than the given type
+    if FLOAT64, INT64 or UINT64 are given then these same types are returned.
+    :param d_type: TenDType, the type
+    :return: TenDType, the higher range type
+    """
+    higher_range_types = {TenDType.FLOAT64: TenDType.FLOAT64,
+                          TenDType.FLOAT32: TenDType.FLOAT64,
+                          TenDType.FLOAT16: TenDType.FLOAT32,
+                          TenDType.INT64: TenDType.INT64,
+                          TenDType.INT32: TenDType.INT64,
+                          TenDType.INT16: TenDType.INT32,
+                          TenDType.INT8: TenDType.INT16,
+                          TenDType.UINT64: TenDType.UINT64,
+                          TenDType.UINT32: TenDType.UINT64,
+                          TenDType.UINT16: TenDType.UINT32,
+                          TenDType.UINT8: TenDType.UINT16}
+    return higher_range_types[d_type]
+
+
 def get_dtype_struct_type(d_type):
+    """
+    Function to return the data type string used in pythons struct pack and
+    unpack functions.
+    :param d_type: TenDType, data type
+    :return: String
+    """
     c_types = {TenDType.FLOAT64: "d",
                TenDType.FLOAT32: "f",
                TenDType.FLOAT16: "#Error#",

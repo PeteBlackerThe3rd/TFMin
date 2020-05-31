@@ -46,6 +46,8 @@ import tf_min.mem_opt.graph_seq_allocator as tfm_seq_opt
 import tf_min.mem_opt.heap_smart_order as tfm_heap_smart_order
 import tf_min.mem_opt.op_split as tfm_op_split
 from tf_min.graph_c_gen import CodeGenerator
+import tf_min.activation_fns as act_fns
+import tf_min.types as types
 
 
 def load_and_sequence_graph(buffer, dmo=False):
@@ -63,6 +65,7 @@ def load_and_sequence_graph(buffer, dmo=False):
 def load_and_export_model():
 
     flatbuffer_filename = "models/squeezenet.tflite"
+    flatbuffer_filename = "models/mobilenet_v1_0.25_128_quant.tflite"
 
     # read tflite flatbuffer
     try:
@@ -77,6 +80,16 @@ def load_and_export_model():
     # generate SVG of flow graph if requested
     print("Saving svg of models flow-graph.")
     graph = load_and_sequence_graph(flatbuffer)
+
+    # temp modify first max_pool operation to have an activation function
+    # first_max_pool = graph.get_nth_operation_of_type(nth=0, op_type='MaxPool')
+    # first_max_pool.params['fused_activation_fn'] = act_fns.ActType.TANH
+    # first_max_pool.type = "AvgPool"
+    # first_max_pool.inputs[0].d_type = types.TenDType.INT8
+
+    # test coefficient addressing method again TFlite reference function
+    # first_max_pool.inputs[0].shape.test_addressing_coeffs()
+
     svg_writer = tfm_svg.SVGWriter(graph)
     svg_writer.write("original_input_graph.svg")
     print("Done.")
@@ -87,7 +100,8 @@ def load_and_export_model():
 
     print("\n==== Allocating memory using heap ordering ====")
     mem_opt = tfm_heap_opt.HeapAllocateGraph(
-      load_and_sequence_graph(flatbuffer),
+      # load_and_sequence_graph(flatbuffer),
+      graph,
       {'order': 'forwards'}
     )
     graph_heap_alloc = mem_opt.translate(verbose=True)
@@ -99,7 +113,8 @@ def load_and_export_model():
 
     code_gen = CodeGenerator(graph=graph_heap_alloc,
                              prefix="namespace_",
-                             base_name="squeeze_net")
+                             base_name="mobile_v1_net_",
+                             path="tfmin_generated")
     code_gen()
 
 

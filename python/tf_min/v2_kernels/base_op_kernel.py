@@ -29,6 +29,7 @@
 import tf_min.graph as tg
 import tf_min.types as types
 from tf_min import cpp_code_gen as c_gen
+import tf_min.activation_fns as act_fns
 
 
 class BaseOpKernel:
@@ -67,6 +68,69 @@ class BaseOpKernel:
         """
         return "base"
 
+    def gen_act_code(self):
+        """
+        Function to generate the activation function code for this opeation,
+        if no activation function is specified then a single newline is
+        returned.
+        :return: String, the c code implementation of the activation function
+        """
+        act_fn = act_fns.ActType.NONE
+        if 'fused_activation_fn' in self.operation.params.keys():
+          act_fn = self.operation.params['fused_activation_fn']
+        return act_fns.gen_act_code(act_fn, self.operation.inputs[0].d_type)
+
+    def compute_single_padding(self,
+                               stride, dilation, in_size,
+                               filter_size, out_size):
+        """
+        Method to compute the padding in a single dimension
+        :param stride:
+        :return:
+        """
+        effective_filter_size = (filter_size - 1) * dilation + 1
+        padding = int(((out_size - 1) * stride +
+                       effective_filter_size - in_size) / 2)
+        if padding > 0:
+          return padding
+        else:
+          return 0
+
+    def compute_padding(self, filter_width, filter_height):
+        """
+        Method to compute the padding width and height of the operation from
+        its stride and input and output sizes.
+        :return: dictionary of the form {'pad_width': int, 'pad_height': int}
+        """
+        stride_width = 1
+        stride_height = 1
+        if 'stride_width' in self.operation.params:
+          stride_width = self.operation.params['stride_width']
+        if 'stride_height' in self.operation.params:
+          stride_height = self.operation.params['stride_height']
+
+        dilation_width_factor = 1
+        dilation_height_factor = 1
+        if 'dilation_width_factor' in self.operation.params:
+          dilation_width_factor = \
+            self.operation.params['dilation_width_factor']
+        if 'dilation_height_factor' in self.operation.params:
+          dilation_height_factor = \
+            self.operation.params['dilation_height_factor']
+
+        pad_width = self.compute_single_padding(stride_width,
+                                                dilation_width_factor,
+                                                self.operation.inputs[0].shape[2],
+                                                filter_width,
+                                                self.operation.outputs[0].shape[2])
+        pad_height = self.compute_single_padding(stride_height,
+                                                 dilation_height_factor,
+                                                 self.operation.inputs[0].shape[1],
+                                                 filter_height,
+                                                 self.operation.outputs[0].shape[1])
+
+        return {'pad_width': pad_width, 'pad_height': pad_height}
+
     def generate(self, batch_size=1, prefix=""):
         """
         Overridable method to generate the ansi-c code of this operation.
@@ -76,7 +140,8 @@ class BaseOpKernel:
         """
         buffer_declarations = ""
         for idx, input in enumerate(self.operation.inputs):
-          print("Generating buff declarations for tensor type [%s]" % input.type)
+          print("Generating buff declarations for tensor type [%s]" %
+                input.type)
           if input.type == tg.TenType.INPUT:
               buffer_declarations += "    const {0} *input_{1} = {2};\n".format(
                   types.get_dtype_c_type(input.d_type),
@@ -84,12 +149,13 @@ class BaseOpKernel:
                   c_gen.c_safe_identifier(input.label)
               )
           elif input.type == tg.TenType.CONSTANT:
-              buffer_declarations += "    const {0} *input_{1} = ({0}*){2}{3};\n".format(
+              buffer_declarations += \
+                "    const {0} *input_{1} = ({0}*){2}{3};\n".format(
                   types.get_dtype_c_type(input.d_type),
                   idx,
                   prefix,
                   c_gen.c_safe_identifier(input.label)
-              )
+                )
           else:
               buffer_declarations += \
                 "    const {0} *input_{1} = ({0}*)tensor_arena + {2};\n".format(
@@ -112,6 +178,14 @@ class BaseOpKernel:
                 int(output.memory_offset / types.get_dtype_size(output.d_type))
               )
         return buffer_declarations
+
+    def get_dependencies(self):
+        """
+        Method which returns a dictionary of include dependencies where
+        the keys are the strings of the files required
+        :return: Dictionary of dependencies
+        """
+        return {}
 
     @staticmethod
     def process_template(template, values):

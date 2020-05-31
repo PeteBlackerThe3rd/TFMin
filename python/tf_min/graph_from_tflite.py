@@ -30,6 +30,7 @@ import copy
 import numpy as np
 import tf_min.graph as tg
 import tf_min.types as types
+from tf_min.activation_fns import ActType
 
 # import flatbuffers and tflite schema interface
 import flatbuffers as fb
@@ -55,49 +56,54 @@ TFLITE_OP_TRANSLATIONS = {'CONV_2D': 'Conv2D',
                           'ADD': 'Add',
                           'SUB': 'Sub'}
 
-TFLITE_PARAM_TRANSLATIONS = {'Conv2D': {'strideW': 'stride_width',
-                                        'strideH': 'stride_height',
-                                        'fusedActivationFunction': 'fused_activation_fn',
-                                        'dilationWFactor': 'dilation_width_factor',
-                                        'dilationHFactor': 'dilation_height_factor'},
-                             'DepthwiseConv2D': {'strideW': 'stride_width',
-                                                 'strideH': 'stride_height',
-                                                 'fusedActivationFunction': 'fused_activation_fn',
-                                                 'dilationWFactor': 'dilation_width_factor',
-                                                 'dilationHFactor': 'dilation_height_factor'},
-                             'MaxPool': {'strideW': 'stride_width',
-                                         'strideH': 'stride_height',
-                                         'filterWidth': 'filter_width',
-                                         'filterHeight': 'filter_height'},
-                             'MinPool': {'strideW': 'stride_width',
-                                         'strideH': 'stride_height',
-                                         'filterWidth': 'filter_width',
-                                         'filterHeight': 'filter_height'},
-                             'AvgPool': {'strideW': 'stride_width',
-                                         'strideH': 'stride_height',
-                                         'filterWidth': 'filter_width',
-                                         'filterHeight': 'filter_height'}
-                             }
+TFLITE_PARAM_TRANSLATIONS = {
+  'Conv2D': {'strideW': 'stride_width',
+             'strideH': 'stride_height',
+             'fusedActivationFunction': 'fused_activation_fn',
+             'dilationWFactor': 'dilation_width_factor',
+             'dilationHFactor': 'dilation_height_factor'},
+  'DepthwiseConv2D': {'strideW': 'stride_width',
+                      'strideH': 'stride_height',
+                      'fusedActivationFunction': 'fused_activation_fn',
+                      'dilationWFactor': 'dilation_width_factor',
+                      'dilationHFactor': 'dilation_height_factor'},
+  'MaxPool': {'strideW': 'stride_width',
+              'strideH': 'stride_height',
+              'filterWidth': 'filter_width',
+              'filterHeight': 'filter_height'},
+  'MinPool': {'strideW': 'stride_width',
+              'strideH': 'stride_height',
+              'filterWidth': 'filter_width',
+              'filterHeight': 'filter_height'},
+  'AvgPool': {'strideW': 'stride_width',
+              'strideH': 'stride_height',
+              'filterWidth': 'filter_width',
+              'filterHeight': 'filter_height'}
+}
+
 
 def tflite_act_transformer(tfl_act):
-    acts = {0: None,
-            1: 'Relu',
-            2: 'ReluN1To1',
-            3: 'Relu6',
-            4: 'TanH',
-            5: 'SignBit'}
+    acts = {0: ActType.NONE,
+            1: ActType.RELU,
+            2: ActType.RELUN1TO1,
+            3: ActType.RELU6,
+            4: ActType.TANH,
+            5: ActType.SIGNBIT}
     return acts[tfl_act]
+
 
 def tflite_padding_transformer(tfl_pad):
     paddings = {0: 'SAME',
                 1: 'VALID'}
     return paddings[tfl_pad]
 
-TFLITE_PARAM_VALUE_TRANSFORMERS = {'Conv2D': {'fused_activation_fn': tflite_act_transformer,
-                                              'padding': tflite_padding_transformer},
-                                   'DepthwiseConv2D': {'fused_activation_fn': tflite_act_transformer,
-                                                       'padding': tflite_padding_transformer}
-                                   }
+
+TFLITE_PARAM_VALUE_TRANSFORMERS = {
+  'Conv2D': {'fused_activation_fn': tflite_act_transformer,
+             'padding': tflite_padding_transformer},
+  'DepthwiseConv2D': {'fused_activation_fn': tflite_act_transformer,
+                      'padding': tflite_padding_transformer}
+}
 
 
 def tfl_type_to_tfmin(tfl_type):
@@ -117,7 +123,7 @@ def tflite_to_tensor(tflite_tensor):
     new_tensor = tg.Tensor()
     new_tensor.label = tflite_tensor.name.decode('utf-8')
     new_tensor.d_type = tfl_type_to_tfmin(tflite_tensor.type)
-    new_tensor.shape = tflite_tensor.shape
+    new_tensor.shape = tg.TensorShape(tflite_tensor.shape)
     new_tensor.type = tg.TenType.INTERMEDIATE
     return new_tensor
 
@@ -144,9 +150,11 @@ def tflite_to_operation(tflite_opr, model):
     # print("Added operation [%s]" % new_opr.type)
 
     # if custom_op:
-    #    print("importing a custom op. opr_code.customCode is [%s]" % opr_code.customCode)
+    #    print("importing a custom op. opr_code.customCode is [%s]" %
+    #          opr_code.customCode)
     # else:
-    #    print("importing a builting op. opr_code.customCode is [%s]" % opr_code.customCode)
+    #    print("importing a builting op. opr_code.customCode is [%s]" %
+    #          opr_code.customCode)
 
     # print("Found op [%s]" % self.type)
     if not custom_op:
@@ -207,7 +215,7 @@ def graph_from_tflite(flatbuffer, sub_graph_idx=0):
         # tensor with a suffix
         new_op.label = new_op.outputs[0].label + "_opr"
         new_graph.ops.append(new_op)
-        #print("Added %s operation with %d inputs and %d outputs." %
+        # print("Added %s operation with %d inputs and %d outputs." %
         #      (new_op.type,
         #       len(new_op.inputs),
         #       len(new_op.outputs)))
@@ -219,7 +227,9 @@ def graph_from_tflite(flatbuffer, sub_graph_idx=0):
             # TODO Get value from buffer
             if tensor.d_type == types.TenDType.FLOAT32:
                 tensor.value = np.array([[1, 2], [3, 4]]).astype(np.float32)
-            elif tensor.d_type == types.TenDType.INT32:
+            else:  # tensor.d_type == types.TenDType.INT32:
                 tensor.value = np.array([[1, 2], [3, 4]]).astype(np.int32)
+
+    new_graph.find_orphans(print_debug=True)
 
     return new_graph
