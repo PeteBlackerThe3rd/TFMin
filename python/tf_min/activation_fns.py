@@ -51,21 +51,21 @@ def gen_act_code(act_type, d_type):
   :return: String, containing the c code implementation
   """
   if act_type == ActType.NONE:
-    return "// None\n"
+    return "// None"
   elif act_type == ActType.RELU:
-    return "// Relu\nif (value < 0)\n  value = 0;\n"
+    return "// Relu\nif (value < 0)\n  value = 0;"
   elif act_type == ActType.RELUN1TO1:
     return ("// Relu -1 to 1\nif (value < -1)\n  value = -1;\n"
-            "if (value > 1)\n  value = 1;\n")
+            "if (value > 1)\n  value = 1;")
   elif act_type == ActType.RELU6:
     return ("// Relu 6\nif (value < 0)\n  value = 0;\n"
-            "if (value > 6)\n  value = 6;\n")
+            "if (value > 6)\n  value = 6;")
   elif act_type == ActType.TANH:
     if d_type == types.TenDType.FLOAT64:
-      return "// relu tanh (double precision float)\nvalue = tanh(value);\n"
+      return "// relu tanh (double precision float)\nvalue = tanh(value);"
     else:
-      return "// relu tanh (single precision float)\nvalue = tanhf(value);\n"
+      return "// relu tanh (single precision float)\nvalue = tanhf(value);"
   elif act_type == ActType.SIGNBIT:
     print("Error: SignBit activation function is not supported at this time.")
     return ("// Error: SignBit activation function is not "
-            "supported at this time.\n")
+            "supported at this time.")

@@ -140,8 +140,8 @@ class BaseOpKernel:
         """
         buffer_declarations = ""
         for idx, input in enumerate(self.operation.inputs):
-          print("Generating buff declarations for tensor type [%s]" %
-                input.type)
+          # print("Generating buff declarations for tensor type [%s]" %
+          #       input.type)
           if input.type == tg.TenType.INPUT:
               buffer_declarations += "    const {0} *input_{1} = {2};\n".format(
                   types.get_dtype_c_type(input.d_type),

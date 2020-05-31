@@ -30,40 +30,39 @@ import tf_min.v2_kernels.base_op_kernel as base
 import tf_min.types as types
 
 
-class Conv2DOpKernel(base.BaseOpKernel):
+class DepthwiseConv2DOpKernel(base.BaseOpKernel):
 
-    CONV_2D_TEMPLATE = """
-    const D_TYPE *filter_data = input_1;
-    for (int batch = 0; batch < batches; ++batch) {
-      for (int out_y = 0; out_y < output_height; ++out_y) {
-        for (int out_x = 0; out_x < output_width; ++out_x) {
-          for (int out_channel = 0; out_channel < output_depth; ++out_channel) {
-            const int in_x_origin = (out_x * stride_width) - padding_width;
-            const int in_y_origin = (out_y * stride_height) - padding_height;
+    DEPTHWISECONV_2D_TEMPLATE = """
+  const D_TYPE *filter_data = input_1; 
+  for (int batch = 0; batch < batches; ++batch) {
+    for (int out_y = 0; out_y < output_height; ++out_y) {
+      for (int out_x = 0; out_x < output_width; ++out_x) {
+        for (int ic = 0; ic < input_depth; ++ic) {
+          for (int m = 0; m < depth_multiplier; m++) {
+            const int out_channel = m + ic * depth_multiplier;
+            const int in_x_origin = (out_x * stride_width) - pad_width;
+            const int in_y_origin = (out_y * stride_height) - pad_height;
             D_TYPE value = 0;
             for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
               for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
-                for (int in_channel = 0; in_channel < input_depth; ++in_channel) {
-                  const int in_x = in_x_origin + dilation_width_factor * filter_x;
-                  const int in_y =
-                      in_y_origin + dilation_height_factor * filter_y;
-                  // If the location is outside the bounds of the input image,
-                  // use zero as a default value.
-                  if ((in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
-                      (in_y < input_height)) {
-                    D_TYPE input_value = input_0[batch * input_d1_coeff + 
-                                                 in_y * input_d2_coeff +
-                                                 in_x * input_d3_coeff +
-                                                 in_channel * input_d4_coeff +
-                                                 input_d_base];
-                    D_TYPE filter_value = 
-                        filter_data[out_channel * filter_d1_coeff +
-                                    filter_y * filter_d2_coeff +
-                                    filter_x * filter_d3_coeff +
-                                    in_channel * filter_d4_coeff +
-                                    filter_d_base];
-                    value += input_value * filter_value;
-                  }
+                const int in_x = in_x_origin + dilation_width_factor * filter_x;
+                const int in_y =
+                    in_y_origin + dilation_height_factor * filter_y;
+                // If the location is outside the bounds of the input image,
+                // use zero as a default value.
+                if ((in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
+                    (in_y < input_height)) {
+                  float input_value = input_0[batch * input_d1_coeff + 
+                                              in_y * input_d2_coeff +
+                                              in_x * input_d3_coeff +
+                                              inc * input_d4_coeff +
+                                              input_d_base];
+                  float filter_value = filter_data[0 * filter_d1_coeff +
+                                                   filter_y * filter_d2_coeff +
+                                                   filter_x * filter_d3_coeff +
+                                                   out_channel * filter_d4_coeff +
+                                                   filter_d_base];
+                  value += input_value * filter_value;
                 }
               }
             }
@@ -79,6 +78,7 @@ class Conv2DOpKernel(base.BaseOpKernel):
         }
       }
     }
+  }
 """
 
     def __init__(self, operation):
@@ -90,11 +90,11 @@ class Conv2DOpKernel(base.BaseOpKernel):
 
     @staticmethod
     def matches(operation):
-      return operation.type == 'Conv2D'
+      return operation.type == 'DepthwiseConv2D'
 
     @staticmethod
     def description():
-        return "Conv2D kernel,\n" + \
+        return "DepthwiseConv2D kernel,\n" + \
                "Currently supports float and integer data types"
 
     @staticmethod
@@ -158,6 +158,7 @@ class Conv2DOpKernel(base.BaseOpKernel):
         'stride_height': self.operation.params['stride_height'],
         'dilation_width_factor': self.operation.params['dilation_width_factor'],
         'dilation_height_factor': self.operation.params['dilation_height_factor'],
+        'depth_multiplier': self.operation.params['depth_multiplier'],
         'padding_width': padding['pad_width'],
         'padding_height': padding['pad_height'],
         'filter_width': filter_shape[0],
@@ -187,7 +188,7 @@ class Conv2DOpKernel(base.BaseOpKernel):
 
       # merge template to generate c implementation of conv 2D layer
       code += base.BaseOpKernel.process_template(
-          Conv2DOpKernel.CONV_2D_TEMPLATE,
+          DepthwiseConv2DOpKernel.DEPTHWISECONV_2D_TEMPLATE,
           template_values
       )
 

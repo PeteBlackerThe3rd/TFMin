@@ -114,7 +114,8 @@ def load_and_export_model():
     code_gen = CodeGenerator(graph=graph_heap_alloc,
                              prefix="namespace_",
                              base_name="mobile_v1_net_",
-                             path="tfmin_generated")
+                             path="tfmin_generated",
+                             clang_format="Google")
     code_gen()
 
 

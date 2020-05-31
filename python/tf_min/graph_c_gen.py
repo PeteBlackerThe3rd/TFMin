@@ -55,7 +55,6 @@ class CodeGenerator:
         """
 
         """
-
         # verify that this graph has been sequenced and intermediate
         # tensors have been pre-allocated.
         self.tensor_arena_size = graph.get_peak_memory()
@@ -131,6 +130,22 @@ class CodeGenerator:
                 print("Complete.")
             else:
                 print("Failed.")
+
+        if self.clang_format is not None:
+            filenames = [os.path.join(self.path, self.base_name + 'model.c'),
+                         os.path.join(self.path, self.base_name + 'model.h'),
+                         os.path.join(self.path, self.base_name + 'weights.c'),
+                         os.path.join(self.path, self.base_name + 'weights.h')]
+            clang_command = ("clang-format %s -i -style=%s" % (
+              " ".join(filenames),
+              self.clang_format
+            ))
+            clang_stream = os.popen(clang_command)
+            clang_result = clang_stream.read().strip()
+            if clang_result == "":
+                print("Formatted code to style %s okay." % self.clang_format)
+            else:
+                print("Failed to format code with error :\n%s" % clang_result)
 
         if wh_okay and ws_okay and mh_okay and ms_okay:
             print("All source files generated okay.")
@@ -234,8 +249,6 @@ class CodeGenerator:
                 if kernel is not None:
                     kernel_instance = kernel(operation)
                     dependencies.update(kernel_instance.get_dependencies())
-            print("Found [%d] dependencies\n%s" % (len(dependencies),
-                                                   dependencies))
             for dependency in dependencies.keys():
                 file.write("#include <%s>\n" % dependency)
             file.write("\n")
@@ -316,7 +329,7 @@ class CodeGenerator:
         identifiers = ['tensor_arena']
         d_types = ['void']
         for input in self.graph.get_inputs():
-            identifiers.append(c_gen.c_safe_identifier(input.label))
+            identifiers.append('const ' + c_gen.c_safe_identifier(input.label))
             d_types.append(types.get_dtype_c_type(input.d_type))
         for output in self.graph.get_outputs():
             identifiers.append(c_gen.c_safe_identifier(output.label))
@@ -337,8 +350,8 @@ class CodeGenerator:
 
         if tensor.value is None:
           print("Tensor [%s] value is None!" % tensor.label)
-        print("tensor value is [%s] type [%s]" % (str(tensor.value),
-                                                 type(tensor.value)))
+          print("tensor value is [%s] type [%s]" % (str(tensor.value),
+                                                    type(tensor.value)))
 
         # the value of constant tensors is stored in a np.ndarray the layout
         # will appropriate for direct conversion to a c array layout

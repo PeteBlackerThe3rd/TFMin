@@ -66,7 +66,8 @@ TFLITE_PARAM_TRANSLATIONS = {
                       'strideH': 'stride_height',
                       'fusedActivationFunction': 'fused_activation_fn',
                       'dilationWFactor': 'dilation_width_factor',
-                      'dilationHFactor': 'dilation_height_factor'},
+                      'dilationHFactor': 'dilation_height_factor',
+                      'depthMultiplier': 'depth_multiplier'},
   'MaxPool': {'strideW': 'stride_width',
               'strideH': 'stride_height',
               'filterWidth': 'filter_width',
@@ -125,6 +126,14 @@ def tflite_to_tensor(tflite_tensor):
     new_tensor.d_type = tfl_type_to_tfmin(tflite_tensor.type)
     new_tensor.shape = tg.TensorShape(tflite_tensor.shape)
     new_tensor.type = tg.TenType.INTERMEDIATE
+    new_tensor.quantization = None
+    if tflite_tensor.quantization is not None:
+      new_tensor.quantization = {'min': tflite_tensor.quantization.min,
+                                 'max': tflite_tensor.quantization.max,
+                                 'scale': tflite_tensor.quantization.scale,
+                                 'offset': tflite_tensor.quantization.zeroPoint}
+      print("Tensor [%s] is quantized" % new_tensor.label)
+      print(new_tensor.quantization)
     return new_tensor
 
 
@@ -177,6 +186,7 @@ def tflite_to_operation(tflite_opr, model):
                 # print(" - Param [%s] %s" % (param, value))
 
     return new_opr
+
 
 def graph_from_tflite(flatbuffer, sub_graph_idx=0):
     """
