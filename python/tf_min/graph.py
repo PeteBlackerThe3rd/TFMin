@@ -440,6 +440,9 @@ class TensorShape:
             shape.append(dim)
         return shape
 
+    def last_dim(self):
+        return self.shape[self.dim_order[-1]]
+
     def get_element_count(self, batch_size=1):
         shape = self.get_shape(batch_size)
         return np.prod(shape)
@@ -555,7 +558,10 @@ class Tensor:
         if isinstance(source_tensor, Tensor):
             self.creating_op = source_tensor.creating_op
             self.dependent_ops = source_tensor.dependent_ops.copy()
-            self.value = source_tensor.value
+            if isinstance(source_tensor.value, np.ndarray):
+                self.value = source_tensor.value.copy()
+            else:
+                self.value = copy.copy(source_tensor.value)
             self.memory_offset = source_tensor.memory_offset
             self.buffer_size = source_tensor.buffer_size
             self.data_ptr_str = source_tensor.data_ptr_str

@@ -149,6 +149,9 @@ class CodeGenerator:
 
         if wh_okay and ws_okay and mh_okay and ms_okay:
             print("All source files generated okay.")
+            return True
+        else:
+            return False
 
     def gen_weights_header(self):
         """
@@ -329,10 +332,11 @@ class CodeGenerator:
         identifiers = ['tensor_arena']
         d_types = ['void']
         for input in self.graph.get_inputs():
-            identifiers.append('const ' + c_gen.c_safe_identifier(input.label))
+            identifiers.append('const p_' +
+                               c_gen.c_safe_identifier(input.label))
             d_types.append(types.get_dtype_c_type(input.d_type))
         for output in self.graph.get_outputs():
-            identifiers.append(c_gen.c_safe_identifier(output.label))
+            identifiers.append('p_' + c_gen.c_safe_identifier(output.label))
             d_types.append(types.get_dtype_c_type(output.d_type))
         params = []
         for idx, identifier in enumerate(identifiers):
@@ -350,8 +354,9 @@ class CodeGenerator:
 
         if tensor.value is None:
           print("Tensor [%s] value is None!" % tensor.label)
-          print("tensor value is [%s] type [%s]" % (str(tensor.value),
-                                                    type(tensor.value)))
+
+        if not isinstance(tensor.value, np.ndarray):
+            tensor.value = np.array(tensor.value)
 
         # the value of constant tensors is stored in a np.ndarray the layout
         # will appropriate for direct conversion to a c array layout

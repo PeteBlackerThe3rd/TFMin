@@ -8,6 +8,9 @@
 # ignore TFMin auto-generated code
 **/tfmin_generated
 
+# ignore verification code and builds
+**/verify_tmp
+
 # ignore directories of tflite models used during development, because they're huge.
 **/models
 

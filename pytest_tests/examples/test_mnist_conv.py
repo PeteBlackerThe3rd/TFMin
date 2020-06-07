@@ -32,6 +32,7 @@ script_path = os.getcwd()
 # Add examples folder to python path just for these test scripts
 sys.path.append(script_path + '/examples')
 
+
 import mnist_conv.mnist_train_and_export as example
 
 
@@ -42,29 +43,27 @@ def test_built_train_and_export_model():
   :return: True if successful False if not.
   """
 
-  #assert False
-  #return
-
   # Setup command line flags for this test
   class Flags:
     def __init__(self):
       self.max_steps = 100
       self.learning_rate = 0.001
       self.data_dir = os.path.join(os.getenv('TEST_TMPDIR', '/tmp'),
-                                    'tensorflow/mnist/input_data')
+                                   'tensorflow/mnist/input_data')
       self.log_dir = os.path.join(os.getenv('TEST_TMPDIR', '/tmp'),
-                                   'tensorflow/mnist/logs/'
-                                   'mnist_with_summaries')
+                                  'tensorflow/mnist/logs/'
+                                  'mnist_with_summaries')
 
-  FLAGS = Flags()
+  flags = Flags()
 
   print("About to train model.")
-  test_result = example.train(FLAGS)
+  test_result = example.train(flags)
   print("----")
 
   assert test_result
 
   return test_result
+
 
 def main():
 
@@ -72,6 +71,7 @@ def main():
     exit(0)
   else:
     exit(1)
+
 
 if __name__ == '__main__':
   main()

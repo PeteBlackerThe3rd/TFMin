@@ -143,7 +143,7 @@ class BaseOpKernel:
           # print("Generating buff declarations for tensor type [%s]" %
           #       input.type)
           if input.type == tg.TenType.INPUT:
-              buffer_declarations += "    const {0} *input_{1} = {2};\n".format(
+              buffer_declarations += "    const {0} *input_{1} = p_{2};\n".format(
                   types.get_dtype_c_type(input.d_type),
                   idx,
                   c_gen.c_safe_identifier(input.label)
@@ -165,7 +165,7 @@ class BaseOpKernel:
                 )
         for idx, output in enumerate(self.operation.outputs):
           if output.type == tg.TenType.OUTPUT:
-            buffer_declarations += "    {0} *output_{1} = {2};\n".format(
+            buffer_declarations += "    {0} *output_{1} = p_{2};\n".format(
               types.get_dtype_c_type(output.d_type),
               idx,
               c_gen.c_safe_identifier(output.label)

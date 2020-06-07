@@ -46,6 +46,7 @@ import tf_min.mem_opt.graph_seq_allocator as tfm_seq_opt
 import tf_min.mem_opt.heap_smart_order as tfm_heap_smart_order
 import tf_min.mem_opt.op_split as tfm_op_split
 from tf_min.graph_c_gen import CodeGenerator
+from tf_min.graph_verify import GraphVerifyOutput
 import tf_min.activation_fns as act_fns
 import tf_min.types as types
 
@@ -118,6 +119,10 @@ def load_and_export_model():
                              clang_format="Google")
     code_gen()
 
+    print("Testing verify output test harness")
+    verifier = GraphVerifyOutput(graph=graph_heap_alloc,
+                                 verbose=True,
+                                 tmp_dir="verify_tmp")
 
 def main():
 

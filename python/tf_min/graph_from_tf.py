@@ -29,37 +29,36 @@
 import tensorflow as tf
 import numpy as np
 import tf_min.graph as tg
+import tf_min.types as types
 
 
 TF_OP_TRANSLATIONS = {'DepthwiseConv2DNative': 'DepthwiseConv2D'}
 
 
-def np_type_to_tfmin(np_type):
-  if np_type == np.float32:
-    return "Float32"
-  if np_type == np.float64:
-    return "Float64"
-  if np_type == np.uint8:
-    return "Uint8"
-  if np_type == np.int8:
-    return "Int8"
-  if np_type == np.int16:
-    return "Int16"
-  if np_type == np.int32:
-    return "Int32"
-  if np_type == np.int64:
-    return "Int64"
-  return "Unknown_Type"
+def tf_type_to_tfmin(tf_type):
+  conversion = {tf.float32: types.TenDType.FLOAT32,
+                tf.float64: types.TenDType.FLOAT64,
+                tf.int8: types.TenDType.INT8,
+                tf.int16: types.TenDType.INT16,
+                tf.int32: types.TenDType.INT32,
+                tf.int64: types.TenDType.INT64,
+                tf.uint8: types.TenDType.UINT8,
+                tf.uint16: types.TenDType.UINT16,
+                tf.uint32: types.TenDType.UINT32,
+                tf.uint64: types.TenDType.UINT64}
+  if tf_type not in conversion.keys():
+    raise TypeError("type %s not supported by TFMin" % tf_type)
+  return conversion[tf_type]
 
 
-def tf_shape_to_np(tf_shape):
+def tf_shape_to_tfmin(tf_shape):
   np_shape = []
   for dim in tf_shape.dims:
     if dim.value is None:
       np_shape.append(-1)
     else:
       np_shape.append(dim.value)
-  return np_shape
+  return tg.TensorShape(np_shape)
 
 
 def get_opr_input_params(tf_opr, sess):
@@ -97,7 +96,7 @@ def add_tf_tensor(graph, tf_tensor, sess):
         if tensor.label == tf_tensor.name:
             return tensor
 
-    new_tensor = tf_to_tensor(tf_tensor)
+    new_tensor = tf_to_tensor(tf_tensor, sess)
     new_tensor.creating_op = add_tf_op(graph, tf_tensor.op, sess)
     new_tensor.creating_op.outputs.append(new_tensor)
     graph.tensors.append(new_tensor)
@@ -152,12 +151,38 @@ def mark_weights(self, sess):
     self.ops.remove(self.ops[self.get_opr_idx(opr)])
 
 
-def tf_to_tensor(tf_tensor):
+def get_parent_of_tensor(tensor):
+    """Returns the parent operation of the given tensor object."""
+
+    for opr in tensor.graph.get_operations():
+      if tensor in opr.outputs:
+        return opr
+
+    raise ValueError("Error couldn't find an operation which was "
+                     "the parent of [%s] in the graph" % tensor.name)
+
+
+def tf_to_tensor(tf_tensor, sess):
     new_tensor = tg.Tensor()
     new_tensor.label = tf_tensor.name
-    new_tensor.d_type = np_type_to_tfmin(tf_tensor.dtype.as_numpy_dtype)
-    new_tensor.shape = tf_shape_to_np(tf_tensor.shape)
+    # numpy_type = np.dtype(tf_tensor.dtype.as_numpy_dtype)
+    # print("tf_to_tensor np_type is [%s]" % type(numpy_type))
+    new_tensor.d_type = tf_type_to_tfmin(tf_tensor.dtype.base_dtype)
+    new_tensor.shape = tf_shape_to_tfmin(tf_tensor.shape)
     new_tensor.type = tg.TenType.INTERMEDIATE
+
+    # if the tensor is a constant or variable then capture it's value
+    constant_op_types = ["Const", "Variable", "VariableV2"]
+    parent_op_type = get_parent_of_tensor(tf_tensor).type
+    if parent_op_type in constant_op_types:
+        [tensor_value] = sess.run([tf_tensor], feed_dict={})
+        print("Getting value of tensor [%s] : \n%s" %
+              (tf_tensor.name, tensor_value))
+        print("type of value [%s]" % type(tensor_value))
+        new_tensor.value = tensor_value
+        new_tensor.type = tg.TenType.CONSTANT
+        print("type of tensor.value [%s]" % type(new_tensor.value))
+
     return new_tensor
 
 
@@ -179,22 +204,17 @@ def tf_to_operation(tf_opr, sess):
 
         # add recognised parameter types
         if key == "dtype":
-          opr.params['dtype'] = np_type_to_tfmin(
-            tf_opr.get_attr(key)
+          opr.params['dtype'] = tf_type_to_tfmin(
+            tf_opr.get_attr(key).base_dtype
           )
         elif key == "dilations":
-          opr.params['dilation_height_factor'] = \
-            tf_opr.get_attr(key)[1]
-          opr.params['dilation_width_factor'] = \
-            tf_opr.get_attr(key)[2]
+          opr.params['dilation_height_factor'] = tf_opr.get_attr(key)[1]
+          opr.params['dilation_width_factor'] = tf_opr.get_attr(key)[2]
         elif key == "padding":
-          opr.params['padding'] = \
-            tf_opr.get_attr(key).decode('utf-8')
+          opr.params['padding'] = tf_opr.get_attr(key).decode('utf-8')
         elif key == "strides":
-          opr.params['stride_height'] = \
-            tf_opr.get_attr(key)[1]
-          opr.params['stride_width'] = \
-            tf_opr.get_attr(key)[2]
+          opr.params['stride_height'] = tf_opr.get_attr(key)[1]
+          opr.params['stride_width'] = tf_opr.get_attr(key)[2]
         elif key == "ksize":
           opr.params['kernel_height'] = tf_opr.get_attr(key)[1]
           opr.params['kernel_width'] = tf_opr.get_attr(key)[2]
@@ -202,6 +222,7 @@ def tf_to_operation(tf_opr, sess):
     [add_params, _] = get_opr_input_params(tf_opr, sess)
     opr.params.update(add_params)
     return opr
+
 
 def graph_from_tf_sess(sess, outputs):
     """
@@ -229,7 +250,7 @@ def graph_from_tf_sess(sess, outputs):
                     for ten in opr.outputs:
                         print("Did you mean : %s" % ten.name)
 
-    # add each tensor and recurrively all preceding operations and
+    # add each output tensor and recurse to add all preceding operations and
     # tensors. Marking them as outputs.
     for output_tensor in output_tensors:
         new_tensor = add_tf_tensor(new_graph, output_tensor, sess)

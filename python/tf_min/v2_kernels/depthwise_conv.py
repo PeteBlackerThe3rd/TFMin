@@ -40,8 +40,8 @@ class DepthwiseConv2DOpKernel(base.BaseOpKernel):
         for (int ic = 0; ic < input_depth; ++ic) {
           for (int m = 0; m < depth_multiplier; m++) {
             const int out_channel = m + ic * depth_multiplier;
-            const int in_x_origin = (out_x * stride_width) - pad_width;
-            const int in_y_origin = (out_y * stride_height) - pad_height;
+            const int in_x_origin = (out_x * stride_width) - padding_width;
+            const int in_y_origin = (out_y * stride_height) - padding_height;
             D_TYPE value = 0;
             for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
               for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
@@ -55,7 +55,7 @@ class DepthwiseConv2DOpKernel(base.BaseOpKernel):
                   float input_value = input_0[batch * input_d1_coeff + 
                                               in_y * input_d2_coeff +
                                               in_x * input_d3_coeff +
-                                              inc * input_d4_coeff +
+                                              ic * input_d4_coeff +
                                               input_d_base];
                   float filter_value = filter_data[0 * filter_d1_coeff +
                                                    filter_y * filter_d2_coeff +

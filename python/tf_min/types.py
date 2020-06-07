@@ -26,6 +26,7 @@
     This module defines the element types supported by TFMin along with
     a set of common conversions
 """
+import numpy as np
 from enum import Enum
 
 
@@ -41,6 +42,31 @@ class TenDType(Enum):
     UINT32 = 9
     UINT16 = 10
     UINT8 = 11
+
+
+def np_to_tfmin(np_type):
+    """
+    Function which converts a numpy data type to a TFMin data type
+    :param np_type: numpy data type
+    :return: TenDType
+    """
+    conversion = {np.float32: TenDType.FLOAT32,
+                   np.float64: TenDType.FLOAT64,
+                   np.int8: TenDType.INT8,
+                   np.int16: TenDType.INT16,
+                   np.int32: TenDType.INT32,
+                   np.int64: TenDType.INT64,
+                   np.uint8: TenDType.UINT8,
+                   np.uint16: TenDType.UINT16,
+                   np.uint32: TenDType.UINT32,
+                   np.uint64: TenDType.UINT64,}
+    if not isinstance(np_type, np.dtype):
+        raise TypeError("Error: np_to_tfmin, source type is not a numpy.dtype")
+    for key, value in conversion.items():
+        if key == np_type:
+            return value
+
+    raise TypeError("numpy type [%s] not supported by TFMin" % np_type)
 
 
 def get_dtype_size(d_type):
@@ -128,6 +154,20 @@ def get_dtype_highest(d_type):
                       TenDType.UINT16: "65536",
                       TenDType.UINT8: "255"}
     return highest_values[d_type]
+
+
+def get_dtype_zero(d_type):
+    """
+    Function to return the c literal zero string for the given data type
+    :param d_type: data type
+    :return: String, zero literal
+    """
+    if d_type == TenDType.FLOAT64:
+        return "0.0"
+    elif d_type == TenDType.FLOAT32:
+        return "0.0f"
+    else:
+        return "0"
 
 
 def is_float(d_type):
