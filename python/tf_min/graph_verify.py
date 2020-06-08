@@ -39,6 +39,7 @@ import struct
 import argparse
 import sys
 import os
+import shutil
 import fcntl
 import subprocess as sp
 import select
@@ -188,7 +189,7 @@ int main(int argc, char **argv[]) {
                                                 clang_format='Google',
                                                 byte_order="@", batch_size=1
                                                 )
-        if c_generator():
+        if c_generator(silent=True):
             if verbose:
                 print("Generated c code for model on test okay.")
         else:
@@ -213,6 +214,14 @@ int main(int argc, char **argv[]) {
             print("Error: Failed to build test harness.")
             self.ready_to_execute = False
             return
+
+    def __del__(self):
+        """
+        Destructor, detects if the tmp_dir exists and deletes it if it does
+        :return: None
+        """
+        #if os.path.exists(self.tmp_dir):
+        #    shutil.rmtree(self.tmp_dir)
 
     def generate_test_harness(self):
         """

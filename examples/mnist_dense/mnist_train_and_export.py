@@ -38,7 +38,13 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.examples.tutorials.mnist import input_data
 
-from tf_min import exporter as tfm_ex
+from tf_min import graph as tfm_g
+from tf_min import graph_from_tf as tfm_tf
+from tf_min.graph_verify import GraphVerifyOutput
+import tf_min.mem_opt.graph_heap_opt as tfm_heap_opt
+from tf_min import graph_2_svg as tfm_svg
+
+#from tf_min import exporter as tfm_ex
 import tf_min.layers as tfm_layers
 
 flags_g = None
@@ -128,11 +134,46 @@ def train(flags):
                            training_label="Training MNIST Classifier")
 
     """-------------------------------------------------------------------------
-    Export Inference model to c++ code using the TFMin library
+    Export Inference model to c code using the TFMin library
     -------------------------------------------------------------------------"""
-    print("Using TFMin library to export minimal C++"
+    print("Using TFMin library to export minimal C"
           "implimentation of this TensorFlow graph.")
-    c_exporter = tfm_ex.Exporter(sess, [layers[-1].output])
+    output_tensor = layers[-1].output
+    graph = tfm_tf.graph_from_tf_sess(sess, outputs=[output_tensor])
+
+    # prepare this graph for export by sequencing the operation and allocating
+    # any intermediate buffers
+    sequencer = tfm_g.SequenceOps(graph)
+    graph = sequencer.translate()
+    mem_opt = tfm_heap_opt.HeapAllocateGraph(graph,
+                                             {'order': 'forwards'})
+    graph_alloc = mem_opt.translate(verbose=True)
+
+    svg_writer = tfm_svg.SVGWriter(graph_alloc)
+    svg_writer.write("original_input_graph.svg")
+    print("Done.")
+
+    # verify the output of this graph matches tensorflow when it is
+    # exported, built, and executed
+    print("Testing verify output test harness")
+    verifier = GraphVerifyOutput(graph=graph_alloc,
+                                 verbose=True,
+                                 tmp_dir="verify_tmp")
+
+    [expected_output] = sess.run(
+      [output_tensor],
+      feed_dict={x: mnist.test.images[:1]}
+    )
+
+    result = verifier.verify_model(input_tensors=[mnist.test.images[:1]],
+                                   expected_output_tensors=[expected_output])
+
+    if result.success:
+      print("Exported model passed verification.")
+    else:
+      print("Exported model failed verification.")
+
+    """c_exporter = tfm_ex.Exporter(sess, [layers[-1].output])
 
     # display the sub-set of the flow-graph being exported.
     c_exporter.print_graph()
@@ -155,11 +196,11 @@ def train(flags):
                                                  mnist.test.images[:1]},
                               validation_type='Full',
                               timing=True,
-                              layout='RowMajor')
+                              layout='RowMajor')"""
 
     sess.close()
     print("Complete")
-    return res
+    return result.success
 
 
 def main(_):

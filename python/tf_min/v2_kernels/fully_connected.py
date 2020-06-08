@@ -33,7 +33,7 @@ import tf_min.types as types
 class FullyConnectedOpKernel(base.BaseOpKernel):
 
     FC_TEMPLATE = """  
-  // accum_depth is the last dimension of the weights tensor
+  // accum_depth is the last dimension of the input tensor
   // output_depth is the last dimension of the output tensor
   D_TYPE *weightsData = input_1;
   for (int b = 0; b < batches; ++b) {
@@ -41,7 +41,10 @@ class FullyConnectedOpKernel(base.BaseOpKernel):
       D_TYPE value = zero_literal;
       for (int d = 0; d < accum_depth; ++d) {
         D_TYPE inputVal = input_0[(b * accum_depth) + d];
-        D_TYPE weightVal = weightsData[(out_c * accum_depth) + d];
+        // D_TYPE weightVal = weightsData[(out_c * accum_depth) + d];
+        // TODO need to work out why the weights are transposed so this
+        // line has needed altering.
+        D_TYPE weightVal = weightsData[out_c + (output_depth * d)];
         value += inputVal * weightVal;
       }
       BIAS_ADD
@@ -83,8 +86,8 @@ class FullyConnectedOpKernel(base.BaseOpKernel):
       :return: String,
       """
       # prepare values for code generate
-      # input_shape = self.operation.inputs[0].get_tensor_shape(batch_size)
-      weights_shape = self.operation.inputs[1].shape
+      input_shape = self.operation.inputs[0].shape
+      # weights_shape = self.operation.inputs[1].shape
       output_shape = self.operation.outputs[0].shape
 
       bias_add = ""
@@ -114,7 +117,7 @@ class FullyConnectedOpKernel(base.BaseOpKernel):
       # populate template dictionary used to transform template into final code
       template_values = {
         'batches': batch_size,
-        'accum_depth': weights_shape.last_dim(),
+        'accum_depth': input_shape.last_dim(),
         'output_depth': output_shape.last_dim(),
         'D_TYPE': types.get_dtype_c_type(self.operation.inputs[0].d_type),
         'zero_literal': types.get_dtype_zero(self.operation.inputs[0].d_type),

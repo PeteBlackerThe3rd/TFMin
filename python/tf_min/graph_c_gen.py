@@ -148,7 +148,8 @@ class CodeGenerator:
                 print("Failed to format code with error :\n%s" % clang_result)
 
         if wh_okay and ws_okay and mh_okay and ms_okay:
-            print("All source files generated okay.")
+            if not silent:
+                print("All source files generated okay.")
             return True
         else:
             return False
