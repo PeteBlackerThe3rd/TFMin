@@ -412,8 +412,12 @@ class TensorShape:
     def __init__(self, initial_shape):
 
         self.shape = initial_shape
+        self.rank = len(initial_shape)
 
         # set default dimension ordering
+        # this list maps input semantic dimesions into a list of dimensions
+        # in order from the most major (significant) to minor (least
+        # significant)
         self.dim_order = list(range(len(initial_shape)))
 
         # set default dimension extra steps, this array defines the
@@ -447,21 +451,83 @@ class TensorShape:
         shape = self.get_shape(batch_size)
         return np.prod(shape)
 
+    def convert_semantic_to_significance(self, semantic):
+        """
+        Convert a list of dimensions or indices in semantic order into a list
+        in signifance order from major to minor.
+        :param semantic: List of dimension sizes, or indices
+        :return: List of dimension sizes or indices in order from major
+                 to minor
+        """
+        assert len(semantic) == len(self.dim_order), \
+            "Error the number of semantic dimensions must match the number " \
+            "of dimenions order indices"
+        sig_order = [None] * len(semantic)
+        for idx, order in enumerate(self.dim_order):
+            sig_order[idx] = semantic[order]
+        return sig_order
+
+    def convert_significance_to_semantic(self, sig_order):
+      """
+      Convert a list of dimensions or indices in significance order into a list
+      in semantic order.
+      :param sig_order: List of dimension sizes, or indices
+      :return: List of dimension sizes or indices in semantic order
+      """
+      assert len(sig_order) == len(self.dim_order), \
+        "Error the number of significance dimensions must match the number " \
+        "of dimenions order indices"
+      sem_order = [None] * len(sig_order)
+      for idx, order in enumerate(self.dim_order):
+        sem_order[order] = sig_order[idx]
+      return sem_order
+
     def get_layout_addressing_coeffs(self, batch_size=1):
         """
         Method to compute and return the index coefficients needed to index
         into this shape and layout of data.
+        :param batch_size: optional batch size to replace unknown dimension
+                           with.
         :return: tuple of (coeff_0, ..., coeff_n, base_offset)
         """
+        # re-order dims and extra steps from semantic to major-minor
+        sig_dims = self.convert_semantic_to_significance(self.shape)
+        sig_extra_steps = self.convert_semantic_to_significance(
+          self.dim_extra_steps
+        )
+
+        print("get coeffs: sig_dims = %s" % sig_dims)
+
+        # add batch to at most one -1 dimension size
+        updated_count = 0
+        for idx, dim in enumerate(sig_dims):
+            if dim == -1:
+                sig_dims[idx] = batch_size
+                updated_count += 1
+
+        assert updated_count <= 1, "Error cannot have more than one batch dim"
+
+        # compute dimension coefficients from minor to major
+        sig_coeffs = [None] * self.rank
+        last_step = 1
+        for idx, dim in reversed(list(enumerate(sig_dims))):
+            new_step = (sig_extra_steps[idx] + 1) * last_step
+            sig_coeffs[idx] = new_step
+            last_step = new_step * dim
+
+        # convert coefficients from significance order back to semantic order
+        coeffs = self.convert_significance_to_semantic(sig_coeffs)
+        return coeffs + [self.base_offset]
+
+    def old_get_layout_addressing_coeffs(self, batch_size=1):
         # TODO currently doesn't compute dim_extra_steps
         coeffs = []
-
         for idx, order in enumerate(self.dim_order):
           coeff = 1
           for order in self.dim_order[idx+1:]:
             dim = self.shape[order]
             if dim == -1:
-              dim = batch
+              dim = batch_size
             coeff *= dim
           coeffs.append(coeff)
 
