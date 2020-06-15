@@ -66,7 +66,7 @@ class PoolingOpKernel(base.BaseOpKernel):
   OPS = {'Add': 'a + b',
          'Subtract': 'a - b',
          'Multiply': 'a * b',
-         'Divide'}
+         'Divide': 'a / b'}
 
   AVG_POOL_TEMPLATE = """
     for (int batch = 0; batch < batches; ++batch) {
