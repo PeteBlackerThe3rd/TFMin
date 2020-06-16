@@ -43,8 +43,7 @@ from tf_min import graph_from_tf as tfm_tf
 from tf_min.graph_verify import GraphVerifyOutput
 import tf_min.mem_opt.graph_heap_opt as tfm_heap_opt
 from tf_min import graph_2_svg as tfm_svg
-
-#from tf_min import exporter as tfm_ex
+from tf_min.pipeline import Pipeline
 import tf_min.layers as tfm_layers
 
 flags_g = None
@@ -141,22 +140,18 @@ def train(flags):
     output_tensor = layers[-1].output
     graph = tfm_tf.graph_from_tf_sess(sess, outputs=[output_tensor])
 
-    # prepare this graph for export by sequencing the operation and allocating
-    # any intermediate buffers
-    sequencer = tfm_g.SequenceOps(graph)
-    graph = sequencer.translate()
-    mem_opt = tfm_heap_opt.HeapAllocateGraph(graph,
-                                             {'order': 'forwards'})
-    graph_alloc = mem_opt.translate(verbose=True)
+    # Use the built-in Greedy Heap pipeline to sequence this graph and pre-
+    # allocate its intermediate buffers.
+    Pipeline(builtin="GreedyHeap")(graph)
 
-    svg_writer = tfm_svg.SVGWriter(graph_alloc)
+    svg_writer = tfm_svg.SVGWriter(graph)
     svg_writer.write("original_input_graph.svg")
     print("Done.")
 
     # verify the output of this graph matches tensorflow when it is
     # exported, built, and executed
     print("Testing verify output test harness")
-    verifier = GraphVerifyOutput(graph=graph_alloc,
+    verifier = GraphVerifyOutput(graph=graph,
                                  verbose=True,
                                  tmp_dir="verify_tmp")
 
@@ -172,31 +167,6 @@ def train(flags):
       print("Exported model passed verification.")
     else:
       print("Exported model failed verification.")
-
-    """c_exporter = tfm_ex.Exporter(sess, [layers[-1].output])
-
-    # display the sub-set of the flow-graph being exported.
-    c_exporter.print_graph()
-
-    # get the path of this script file. This is done so this works
-    # correctly when executed stand alone and when executed as module during
-    # testing.
-    path_of_example_script = os.path.dirname(os.path.realpath(__file__))
-
-    # generate the following c++ code encapsulating this inference model
-    #
-    # tfmin_generated/mnist_model.cpp
-    # tfmin_generated/mnist_model.h
-    # tfmin_generated/mnist_model_data.h
-    #
-    res = c_exporter.generate(path_of_example_script +
-                              "/tfmin_generated/mnist_model",
-                              "MNISTModel",
-                              validation_inputs={"input/x-input":
-                                                 mnist.test.images[:1]},
-                              validation_type='Full',
-                              timing=True,
-                              layout='RowMajor')"""
 
     sess.close()
     print("Complete")

@@ -32,6 +32,8 @@ from enum import Enum
 import numpy as np
 import operator
 import tf_min.types as types
+import tf_min.graph as tg
+from tf_min.mem_opt.memory_region import MemoryRegion
 from tf_min.graph_translators.graph_translator import GraphTranslator
 
 
@@ -94,7 +96,7 @@ class HeapSmartOrder(GraphTranslator):
               tensor.memory_offset = None
               # element_count = np.prod(tensor.get_tensor_shape(batch_size))
               tensor.buffer_size = \
-                tensor.get_buffer_size(self.parameters['BatchSize'])
+                  tensor.get_buffer_size(self.parameters['BatchSize'])
               tensor.creation_idx = None
               tensor.last_use_idx = None
 
@@ -141,7 +143,8 @@ class HeapSmartOrder(GraphTranslator):
 
           # find the lowest tensor of the current tensors to allocate
           for tensor in tensors_to_allocate:
-              offset = self.get_heap_allocated_offset(graph, tensor) + tensor.buffer_size
+              offset = (self.get_heap_allocated_offset(graph, tensor) +
+                        tensor.buffer_size)
               if (lowest_tensor_offset is None or
                       offset < lowest_tensor_offset):
                   lowest_tensor = tensor
@@ -155,7 +158,7 @@ class HeapSmartOrder(GraphTranslator):
 
           # add any un-allocated tensors with overlapping scopes with
           # the lowest tensor to the tensors to allocate list
-          for tensor in self.output_graph.tensors:
+          for tensor in graph.tensors:
               if (not tensor.allocated() and
                       tensor.type == tg.TenType.INTERMEDIATE and
                       tensor.meta_type != tg.TenMetaType.SUB and
@@ -166,13 +169,13 @@ class HeapSmartOrder(GraphTranslator):
       self.summary = ("Allocated %d of %d intermediate tensor buffers,"
                       "taking %s bytes (%d KB)" %
                       (tensors_allocated,
-                       self.output_graph.count_tensors_by_type(
+                       graph.count_tensors_by_type(
                          tg.TenType.INTERMEDIATE,
                          meta_type=[tg.TenMetaType.SINGLE,
                                     tg.TenMetaType.SUPER]
                        ),
-                       self.output_graph.get_peak_memory(),
-                       self.output_graph.get_peak_memory() / 1024))
+                       graph.get_peak_memory(),
+                       graph.get_peak_memory() / 1024))
 
       # self.output_graph.find_peak_ops_and_tensors(highlight=(50, 50, 100))
 
@@ -189,6 +192,7 @@ class HeapSmartOrder(GraphTranslator):
       """
       Find the offset to place the tensor in the allocated block
       pattern using a heap allocation method. I.e. the first free space.
+      :param graph:
       :param new_tensor: the tensor object to allocate
       :return: the offset to place this tensor at in bytes.
       """
@@ -207,8 +211,8 @@ class HeapSmartOrder(GraphTranslator):
           # being allocated has been defined then reduce the size of this
           # tensor region.
           if (tensor.safe_overlap_preceding_tensor == new_tensor and
-                tensor.safe_overlap_bytes is not None):
-            tensor_region.end -= tensor.safe_overlap_bytes
+                  tensor.safe_overlap_bytes is not None):
+              tensor_region.end -= tensor.safe_overlap_bytes
 
           for region in free_regions:
             new_free_regions.extend(region.get_carve_result(tensor_region))
@@ -234,7 +238,7 @@ class HeapSmartOrder(GraphTranslator):
     new_tensor.memory_offset = offset'''
 
 
-def heap_smart_order(input_graph, params={}, inplace=False):
+'''def heap_smart_order(input_graph, params={}, inplace=False):
     """
     Convenience function so this translator can be used with a single
     function call, without the need to setup the functionoid.
@@ -251,4 +255,4 @@ def heap_smart_order(input_graph, params={}, inplace=False):
         translator(input_graph, inplace=True)
         return
     else:
-        return translator(input_graph, inplace=False)
+        return translator(input_graph, inplace=False)'''

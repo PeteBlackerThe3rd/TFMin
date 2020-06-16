@@ -67,7 +67,7 @@ class SequenceOps(GraphTranslator):
       opr_added = False
       # find an operation which has not been sequenced but where all
       # input tensors are.
-      for opr in self.output_graph.ops:
+      for opr in output_graph.ops:
         if opr.sequence_index is None:
           inputs_ready = True
           for input in opr.inputs:
@@ -80,7 +80,7 @@ class SequenceOps(GraphTranslator):
             next_index += 1
             opr_added = True
 
-    self.output_graph.update_sequence_references()
+    output_graph.update_sequence_references()
 
     self.summary = ("Sequenced %d operations using greedy execution." %
                     next_index)
@@ -91,7 +91,7 @@ class SequenceOps(GraphTranslator):
         return output_graph
 
 
-def sequence_ops(input_graph, params={}, inplace=False):
+'''def sequence_ops(input_graph, params={}, inplace=False):
     """
     Convenience function so this translator can be used with a single
     function call, without the need to setup the functionoid.
@@ -108,4 +108,4 @@ def sequence_ops(input_graph, params={}, inplace=False):
         translator(input_graph, inplace=True)
         return
     else:
-        return translator(input_graph, inplace=False)
+        return translator(input_graph, inplace=False)'''

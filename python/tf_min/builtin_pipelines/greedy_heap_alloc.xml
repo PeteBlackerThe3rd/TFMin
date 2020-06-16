@@ -1,8 +1,0 @@
-<tfmin>
-  <pipeline>
-    <!--RemoveDropOuts /-->
-    <SequenceOps Execution="Greedy" />
-    <HeapSmartOrder Order="Reverse" />
-  </pipeline>
-  <code_gen name_prefix="test_model" output_base="test_" />
-</tfmin>

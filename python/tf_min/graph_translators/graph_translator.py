@@ -73,8 +73,27 @@ class GraphTranslator:
 
   @classmethod
   def get_type(cls):
-      return cls.TYPE  # "GraphTranslator"
+      return cls.TYPE
 
+  @classmethod
+  def call(cls, graph, params={}, inplace=True):
+    """
+    Convenience function so this translator can be used with a single
+    function call, without the need to setup the functionoid.
+    :param graph: Original graph object
+    :param params: Dictionary of parameters
+    :param inplace: Boolean, if true the input graph is modified,
+                    if false the input graph is cloned and modified and the
+                    new unique graph is returned.
+    :return: None, or new graph depending on inplace
+    """
+    translator = cls(params)
+
+    if inplace:
+      translator(graph, inplace=True)
+      return
+    else:
+      return translator(graph, inplace=False)
 
   def to_xml(self, doc):
     """
@@ -88,7 +107,7 @@ class GraphTranslator:
       xml_node.setAttribute(setting, value)
     return xml_node
 
-  def __call__(self, input_graph, inplace=False):
+  def __call__(self, input_graph, inplace=True):
     """
     Overload making this object callable, base class implementation
     takes an input Graph clones it and returns it unchanged.

@@ -276,7 +276,7 @@ class SVGWriter:
             max_op_height = max(op_heights)
         op_row_spacing = (self.row_spacing + max_op_height) / 2 + self.v_padding
         if sub_tensors_present:
-            #print("Adding row of tensors, super tensor present")
+            # print("Adding row of tensors, super tensor present")
             op_row_spacing += self.row_spacing
         for i, tensor in enumerate(tensors_to_add):
             # x_pos = x_start + i * (self.op_width + self.h_padding)
@@ -300,7 +300,8 @@ class SVGWriter:
                     # if tensor doesn't have a creating op but it is a super
                     # tensor then it may have multiple sub-tensors with creating
                     # ops
-                #print("Drawing super tensor with [%d] sub-tensors" % len(tensor.sub_tensors))
+                # print("Drawing super tensor with [%d] sub-tensors" %
+                #       len(tensor.sub_tensors))
                 # if this is a pre-super tensor where the super tensor is
                 # populated first then sub-tensors read
                 if tensor.creating_op is not None:
@@ -377,7 +378,7 @@ class SVGWriter:
                         deps.extend(sub_ten.dependent_ops)
 
                 if not deps:
-                    #print("skipping tensor [%s] type [%s] with no deps" %
+                    # print("skipping tensor [%s] type [%s] with no deps" %
                     #      (ten.label,
                     #       ten.meta_type))
                     continue
@@ -389,8 +390,8 @@ class SVGWriter:
                 if ready_to_place:
                     tensors_to_place.append(ten)
 
-            #print("Placing %d tensors." % len(tensors_to_place))
-            #for ten in tensors_to_place:
+            # print("Placing %d tensors." % len(tensors_to_place))
+            # for ten in tensors_to_place:
             #  print("-> %s [%s]" % (ten.label, ten.meta_type))
 
             row_height = self.place_row_of_tensors(tensors_to_place, y_pos)
