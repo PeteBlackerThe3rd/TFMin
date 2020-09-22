@@ -145,7 +145,9 @@ class FuseBiasAdds(GraphTranslator):
     else:
         output_graph = input_graph.clone()
 
-    fusable_op_types = ['MatMul', 'Conv2D', 'DepthwiseConv2D']
+    fusable_op_types = ['MatMul', 'Conv2D', 'DepthwiseConv2D',
+                        'TransposedConv2D']
+    bias_add_op_types = ['Add', 'BiasAdd']
     items_to_remove = []
     bias_additions_fused = 0
 
@@ -153,12 +155,12 @@ class FuseBiasAdds(GraphTranslator):
       if opr.type in fusable_op_types:
 
         # For this fusion to be possible the following op must be an Add
-        # operation with a vector input the same size as the last dimension
-        # of the output tensor. There must also only be one
+        # or BiasAdd operation with a vector input the same size as the
+        # last dimension of the output tensor. There must also only be one
         # operation which consumes the output tensor of this op.
         output_tensor = opr.outputs[0]
         if (len(output_tensor.dependent_ops) == 1 and
-                output_tensor.dependent_ops[0].type == 'Add'):
+                output_tensor.dependent_ops[0].type in bias_add_op_types):
           last_dim = output_tensor.shape.last_dim()
           add_op = output_tensor.dependent_ops[0]
           if add_op.inputs[0] == output_tensor:
@@ -210,11 +212,13 @@ class FuseActivations(GraphTranslator):
     else:
         output_graph = input_graph.clone()
 
-    fusable_op_types = ['MatMul', 'Conv2D', 'DepthwiseConv2D']
+    fusable_op_types = ['MatMul', 'Conv2D', 'DepthwiseConv2D',
+                        'TransposedConv2D']
     activation_fns = {'Relu': ActType.RELU,
                       'Relu6': ActType.RELU6,
                       'ReluN1To1': ActType.RELUN1TO1,
-                      'TanH': ActType.TANH}
+                      'TanH': ActType.TANH,
+                      'LeakyRelu': ActType.LEAKY_RELU}
 
     items_to_remove = []
     activations_fused = 0
@@ -231,6 +235,8 @@ class FuseActivations(GraphTranslator):
             input_op.outputs = output_tensors
             input_op.params['fused_activation_fn'] = \
                 activation_fns[opr.type]
+            for act_param in opr.params.keys():
+              input_op.params['act_' + act_param] = opr.params[act_param]
             for output in input_op.outputs:
               output.creating_op = input_op
             activations_fused += 1

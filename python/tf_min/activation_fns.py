@@ -40,14 +40,16 @@ class ActType(Enum):
   RELU6 = 3
   TANH = 4
   SIGNBIT = 5
+  LEAKY_RELU = 6
 
 
-def gen_act_code(act_type, d_type):
+def gen_act_code(act_type, d_type, args=None):
   """
   Function to return the c code implementation of the given activation type
   Note this assumes that the element value is held in a variable called 'value'
   :param act_type: ActType, the type of activation function to generate
   :param d_type: TenDType, the datatype of the value being activated.
+  :param args: List, or arguments or None used for leaky relu alpha.
   :return: String, containing the c code implementation
   """
   if act_type == ActType.NONE:
@@ -69,3 +71,11 @@ def gen_act_code(act_type, d_type):
     print("Error: SignBit activation function is not supported at this time.")
     return ("// Error: SignBit activation function is not "
             "supported at this time.")
+  elif act_type == ActType.LEAKY_RELU:
+    if args is None or len(args) != 1:
+      code = "// Leaky Relu, Alpha = %f\n" % args[0]
+      code += "if (value < 0)\n  value *= %f;\n" % args[0]
+      return code
+    else:
+      print("Error: LeakyRelu specified with not Alpha coefficient!")
+      return "// Error: LeakyRelu specified with not Alpha coefficient!"

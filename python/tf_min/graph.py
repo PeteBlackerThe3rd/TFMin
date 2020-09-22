@@ -611,6 +611,7 @@ class Tensor:
         self.last_use_idx = None
         self.data_layout = None
         self.shape = None
+        self.type = None
 
         # sub/super tensor properties
         self.meta_type = TenMetaType.SINGLE

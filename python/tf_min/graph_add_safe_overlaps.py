@@ -29,8 +29,10 @@ import tf_min.graph as tm
 
 # use the dynamic op_kernel_loader to import op_kernels from all requires paths
 from tf_min.op_kernels import base_op
-import tf_min.op_kernels.import_op_kernels as op_kernel_loader
-op_kernel_loader.import_op_kernels(verbose=False)
+from tf_min.v2_kernels.base_op_kernel import BaseOpKernel
+from tf_min.v2_kernels import *
+# import tf_min.op_kernels.import_op_kernels as op_kernel_loader
+# op_kernel_loader.import_op_kernels(verbose=False)
 
 
 def add_safe_overlaps_to_graph(graph, verbose=False):
@@ -43,11 +45,20 @@ def add_safe_overlaps_to_graph(graph, verbose=False):
   method which significantly reduces the memory requirement of the model.
   :return: None
   """
+
+  print("Found %d op kernels" % len(BaseOpKernel.__subclasses__()))
+
   safe_overlaps_found = 0
   for op in graph.ops:
-    op_k = op_kernel_loader.find_op_kernel(op)
-    if op_k is not None:
-      safe_overlap_bytes = op_k.get_safe_overlap(op)
+
+    op_kernel = None
+    for Kernel in BaseOpKernel.__subclasses__():
+      if Kernel.matches(op):
+        op_kernel = Kernel(op)
+
+    # op_k = op_kernel_loader.find_op_kernel(op)
+    if op_kernel is not None:
+      safe_overlap_bytes = op_kernel.get_safe_overlap()
       if safe_overlap_bytes is not None and safe_overlap_bytes > 0:
         op.outputs[0].safe_overlap_preceding_tensor = op.inputs[0]
         op.outputs[0].safe_overlap_bytes = safe_overlap_bytes

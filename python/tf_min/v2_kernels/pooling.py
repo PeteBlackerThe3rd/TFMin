@@ -26,6 +26,7 @@
     This module contains the base operation kernel for generating ansi-c
     code for the v2 architecture.
 """
+import math as m
 import tf_min.v2_kernels.base_op_kernel as base
 import tf_min.types as types
 import tf_min.activation_fns as act_fns
@@ -147,6 +148,52 @@ class PoolingOpKernel(base.BaseOpKernel):
       :return: String
       """
       return "testing"
+
+    def get_safe_overlap(self, debug=False):
+      """
+      Pooling customised method used to compute the safe overlap
+      of the input and output intermediate buffers of this operation.
+      :return: size of the safe overlap in bytes
+      """
+      output = self.operation.outputs[0]
+      input_shape = self.operation.inputs[0].shape
+      output_shape = output.shape
+
+      input_w = input_shape[1]
+      input_h = input_shape[2]
+      input_d = input_shape[3]
+
+      output_w = output_shape[1]
+      output_h = output_shape[2]
+
+      kernel_w = self.operation.params['kernel_width']
+      kernel_h = self.operation.params['kernel_width']
+
+      stride_w = self.operation.params['stride_width']
+      stride_h = self.operation.params['stride_height']
+
+      dilation_w = 1
+      dilation_h = 1
+
+      padding_h = m.floor((output_h * stride_h - stride_h + kernel_h * dilation_h - dilation_h - input_h + 1) / 2)
+      padding_w = m.floor((output_w * stride_w - stride_w + kernel_w * dilation_w - dilation_w - input_w + 1) / 2)
+
+      a = (stride_h * input_w) / float(output_w)
+      b = (output_w * stride_w - padding_h * input_w - stride_h * input_w - stride_w - padding_w) * input_d + 1
+      ic = output_h * output_w * input_d
+
+      if debug:
+        print("a = %f, b = %d, ic = %d" % (a, b, ic))
+
+      output_buffer_size = output.get_buffer_size()
+      output_dtype_size = types.get_dtype_size(output.d_type)
+
+      safe_overlap = (output_buffer_size +
+                      (min(b / a, a * ic + b - ic) * output_dtype_size))
+      if debug:
+        print("safe_overlap = %d" % safe_overlap)
+
+      return safe_overlap
 
     def get_dependencies(self):
         """

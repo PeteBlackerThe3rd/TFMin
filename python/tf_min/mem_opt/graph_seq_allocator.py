@@ -70,10 +70,10 @@ class SeqAllocateGraph(tg.GraphTranslator):
         # test if the graph is purely sequential
         purely_sequential = True
         cur_op = input.dependent_ops[0]
-        while (True):
+        while True:
             int_outputs = cur_op.get_outputs_by_type(tg.TenType.INTERMEDIATE)
             if len(int_outputs) != 1:
-                if (cur_op.outputs[0].type == tg.TenType.OUTPUT):
+                if cur_op.outputs[0].type == tg.TenType.OUTPUT:
                     break
                 else:
                     purely_sequential = False
@@ -90,11 +90,12 @@ class SeqAllocateGraph(tg.GraphTranslator):
             # continue testing for a sequential plus split graph
             sequential = True
             cur_op = input.dependent_ops[0]
-            while (True):
+            while True:
               int_outputs = cur_op.get_outputs_by_type(tg.TenType.INTERMEDIATE)
 
               # if this could be the start of a split section
-              if (len(int_outputs) == 1 and int_outputs[0].meta_type == tg.TenMetaType.SUPER):
+              if (len(int_outputs) == 1 and
+                      int_outputs[0].meta_type == tg.TenMetaType.SUPER):
 
                 # get the final output super tensor if it exists
                 first_int_op = int_outputs[0].sub_tensors[0].dependent_ops[0]
@@ -143,7 +144,7 @@ class SeqAllocateGraph(tg.GraphTranslator):
                         sequential = False
                         print("#5")
                         break
-                    if (int_op2.outputs[0].super_tensor != output_super_tensor):
+                    if int_op2.outputs[0].super_tensor != output_super_tensor:
                         sequential = False
                         print("#6")
                         break
@@ -156,9 +157,9 @@ class SeqAllocateGraph(tg.GraphTranslator):
                     break
                 cur_op = output_super_tensor.dependent_ops[0]
 
-              else: # if it's not the start of a split section
+              else:  # if it's not the start of a split section
                 if len(int_outputs) != 1:
-                  if (cur_op.outputs[0].type == tg.TenType.OUTPUT):
+                  if cur_op.outputs[0].type == tg.TenType.OUTPUT:
                     break
                   else:
                     purely_sequential = False
@@ -207,7 +208,7 @@ class SeqAllocateGraph(tg.GraphTranslator):
                 else:
                     input.last_use_idx = max(input.last_use_idx, idx)
 
-        # Find the peak memory by finding the adjacent pair of buffer with
+        # Find the peak memory by finding the adjacent pair of buffers with
         # the largest combined size
         """peak_memory = 0
         for tensor in self.output_graph.tensors:
@@ -221,7 +222,8 @@ class SeqAllocateGraph(tg.GraphTranslator):
 
         buffer_num = 0
         previous_tensor = None
-        cur_tensor = self.output_graph.get_inputs()[0].dependent_ops[0].outputs[0]
+        cur_tensor = \
+            self.output_graph.get_inputs()[0].dependent_ops[0].outputs[0]
         while cur_tensor.type != tg.TenType.OUTPUT:
 
             # if this is the start of a split section allocate it specially
@@ -230,9 +232,11 @@ class SeqAllocateGraph(tg.GraphTranslator):
                 path_count = len(input_tensor.sub_tensors)
                 int_tensors = []
                 for path in range(path_count):
-                    int_tensor = input_tensor.sub_tensors[path].dependent_ops[0].outputs[0]
+                    int_tensor = \
+                      input_tensor.sub_tensors[path].dependent_ops[0].outputs[0]
                     int_tensors.append(int_tensor)
-                output_tensor = int_tensor.dependent_ops[0].outputs[0].super_tensor
+                output_tensor = \
+                  int_tensor.dependent_ops[0].outputs[0].super_tensor
 
                 # int_tensors_offset = None
                 if buffer_num % 2 == 0:
@@ -249,7 +253,8 @@ class SeqAllocateGraph(tg.GraphTranslator):
                     if outer > outer_offset:
                         outer_offset = outer
                 if previous_tensor is not None:
-                    outer_offset = max(outer_offset, previous_tensor.buffer_size)
+                    outer_offset = max(outer_offset,
+                                       previous_tensor.buffer_size)
 
                 if buffer_num % 2 == 0:
                     output_tensor.memory_offset = outer_offset
@@ -270,7 +275,8 @@ class SeqAllocateGraph(tg.GraphTranslator):
                 if next_tensor.buffer_size is None:
                     print("Whats going on? type [%s] metatype [%s]" % (next_tensor.type, next_tensor.meta_type))
 
-                if previous_tensor is not None and previous_tensor.buffer_size is None:
+                if (previous_tensor is not None and
+                        previous_tensor.buffer_size is None):
                     print("Previous tensor buffer size is None!!")
 
                 if buffer_num % 2 == 0:
@@ -289,7 +295,6 @@ class SeqAllocateGraph(tg.GraphTranslator):
                 cur_tensor = next_tensor
 
         self.graph_allocated = True
-
 
     @staticmethod
     def scopes_overlap(tensor_a, tensor_b):

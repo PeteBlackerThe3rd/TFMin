@@ -114,7 +114,7 @@ def get_dtype_lowest(d_type):
     """
     Function to return a string describing the lowest possible value this
     data type can store in C code.
-    This return an integer in a string for integer types and the name
+    This returns a c integer literal for integer types and the name
     of a macro defined in float.h for float types
     :param d_type: TenDType, the data type
     :return: String

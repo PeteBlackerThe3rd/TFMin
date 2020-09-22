@@ -41,10 +41,13 @@ class HeapAllocateGraph(tg.GraphTranslator):
         self.summary = ""
         batch_size = 1
         order = "forwards"
+        use_overlaps = False
         if 'batch_size' in params:
             batch_size = params['batch_size']
         if 'order' in params:
             order = params['order']
+        if 'use_overlaps' in params:
+            use_overlaps = params['use_overlaps']
         if self.output_graph.op_sequence is None:
             print("Error: Cannot heap allocate a graph which "
                   "hasn't been sequenced!")

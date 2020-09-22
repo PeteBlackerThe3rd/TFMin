@@ -68,6 +68,14 @@ class BaseOpKernel:
         """
         return "base"
 
+    def get_safe_overlap(self):
+        """
+        Base op safe overlap method, this always returns zero
+        unless its overriden with a specialised overlap calculation method
+        :return: zero bytes
+        """
+        return 0
+
     def gen_act_code(self):
         """
         Function to generate the activation function code for this opeation,
@@ -75,6 +83,8 @@ class BaseOpKernel:
         returned.
         :return: String, the c code implementation of the activation function
         """
+        # TODO need to add code to extract all op params which are prefixed
+        #   with act_ and pass them as a list to get_act_code.
         act_fn = act_fns.ActType.NONE
         if 'fused_activation_fn' in self.operation.params.keys():
           act_fn = self.operation.params['fused_activation_fn']
@@ -190,7 +200,10 @@ class BaseOpKernel:
     @staticmethod
     def process_template(template, values):
         """
-
+        For now a crude template function which simply replaces a list of
+        (original -> new) pairs in the input value.
+        No chain update avoidance is performed!
+        TODO Need to make this more robust at some point.
         :param template:
         :param values:
         :return:

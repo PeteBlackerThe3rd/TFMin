@@ -34,7 +34,13 @@ from tf_min.pipeline import Pipeline
 from tf_min.graph_translators.graph_simplification import *
 
 
-TF_OP_TRANSLATIONS = {'DepthwiseConv2DNative': 'DepthwiseConv2D'}
+TF_OP_TRANSLATIONS = {'DepthwiseConv2DNative': 'DepthwiseConv2D',
+                      'Conv2DBackpropInput': 'TransposedConv2D'}
+
+
+# temporary global array to record which operations have be skipped
+# while importing the graph.
+skipped_ops = []
 
 
 def tf_type_to_tfmin(tf_type):
@@ -55,6 +61,8 @@ def tf_type_to_tfmin(tf_type):
 
 def tf_shape_to_tfmin(tf_shape):
   np_shape = []
+  if tf_shape.dims is None:
+    return np.array([1])
   for dim in tf_shape.dims:
     if dim.value is None:
       np_shape.append(-1)
@@ -99,8 +107,11 @@ def add_tf_tensor(graph, tf_tensor, sess):
             return tensor
 
     new_tensor = tf_to_tensor(tf_tensor, sess)
-    new_tensor.creating_op = add_tf_op(graph, tf_tensor.op, sess)
-    new_tensor.creating_op.outputs.append(new_tensor)
+    if tf_tensor.op in skipped_ops:
+      new_tensor.creating_op = None
+    else:
+      new_tensor.creating_op = add_tf_op(graph, tf_tensor.op, sess)
+      new_tensor.creating_op.outputs.append(new_tensor)
     graph.tensors.append(new_tensor)
     return new_tensor
 
@@ -164,7 +175,54 @@ def get_parent_of_tensor(tensor):
                      "the parent of [%s] in the graph" % tensor.name)
 
 
+def is_tensor_const(tf_tensor, sess):
+  """
+  Function which checks if this tensor does not depend on any input tensors,
+  i.e. it only depends on Const or Variable tensors and can be precalculated.
+  :param tf_tensor: tf.Tensor object to check
+  :return: True if this tensor has a constant value
+  """
+
+  parent_op = get_parent_of_tensor(tf_tensor)
+
+  # base case 1 this is a constant value tensor
+  constant_op_types = ["Const", "Variable", "VariableV2"]
+  if parent_op.type in constant_op_types:
+    return True
+
+  # base case 2 this is an input tensor
+  if parent_op.type == "Placeholder":
+    return False
+
+  # check if any inputs to the parent op are not const then this isn't const
+  [_, valid_inputs] = get_opr_input_params(parent_op, sess)
+  for tensor in valid_inputs:
+    if not is_tensor_const(tensor, sess):
+      return False
+
+  return True
+
+
+def skip_tensor_inputs(tf_tensor):
+  """
+  Function which adds all input operations of the given tensor to the
+  skipped_ops list. This is used when blocks of operations with a constant
+  value are simplified during import.
+  :param tf_tensor: tensor to skip inputs of
+  :return: None
+  """
+  parent_op = get_parent_of_tensor(tf_tensor)
+  skipped_ops.append(parent_op)
+
+  # skip all input tensors
+  for input_tensor in tf_tensor.op.inputs:
+    skip_tensor_inputs(input_tensor)
+
+
 def tf_to_tensor(tf_tensor, sess):
+    """
+    Create a new TFMin.Tensor object from a tf.Tensor
+    """
     new_tensor = tg.Tensor()
     new_tensor.label = tf_tensor.name
     # numpy_type = np.dtype(tf_tensor.dtype.as_numpy_dtype)
@@ -174,15 +232,17 @@ def tf_to_tensor(tf_tensor, sess):
     new_tensor.type = tg.TenType.INTERMEDIATE
 
     # if the tensor is a constant or variable then capture it's value
-    constant_op_types = ["Const", "Variable", "VariableV2"]
-    parent_op_type = get_parent_of_tensor(tf_tensor).type
-    if parent_op_type in constant_op_types:
+    # constant_op_types = ["Const", "Variable", "VariableV2"]
+    # parent_op_type = get_parent_of_tensor(tf_tensor).type
+    # if parent_op_type in constant_op_types:
+    if is_tensor_const(tf_tensor, sess):
         [tensor_value] = sess.run([tf_tensor], feed_dict={})
         # print("Getting value of tensor [%s] : \n%s" %
         #       (tf_tensor.name, tensor_value))
         # print("type of value [%s]" % type(tensor_value))
         new_tensor.value = tensor_value
         new_tensor.type = tg.TenType.CONSTANT
+        skip_tensor_inputs(tf_tensor)
         # print("type of tensor.value [%s]" % type(new_tensor.value))
 
     return new_tensor
@@ -193,9 +253,11 @@ def tf_to_operation(tf_opr, sess):
     opr.type = tf_opr.type
     opr.label = tf_opr.name
 
+    # print("Adding operation [%s, %s]" % (opr.label, opr.type))
+
     # translate operation type from tflite to TFMin
     if opr.type in TF_OP_TRANSLATIONS:
-      opr.type = TF_OP_TRANSLATIONS[self.type]
+      opr.type = TF_OP_TRANSLATIONS[opr.type]
 
     # Brutally hacky way of getting the list of attributes
     # from a tensorflow.core.framework.node_def_pb2.NodeDef
@@ -203,6 +265,8 @@ def tf_to_operation(tf_opr, sess):
     for line in lines:
       if line.startswith("  key: \""):
         key = line[8:100].replace("\"", "")
+
+        # print("Param key [%s]" % key)
 
         # add recognised parameter types
         if key == "dtype":
@@ -220,10 +284,31 @@ def tf_to_operation(tf_opr, sess):
         elif key == "ksize":
           opr.params['kernel_height'] = tf_opr.get_attr(key)[1]
           opr.params['kernel_width'] = tf_opr.get_attr(key)[2]
+        elif key == "alpha":
+          opr.params['alpha'] = tf_opr.get_attr(key)
 
     [add_params, _] = get_opr_input_params(tf_opr, sess)
     opr.params.update(add_params)
     return opr
+
+
+def merge_tensor_parameters(graph):
+  """
+  Function to capture operation parameters which tensorflow decided to
+  store as tensors. Our graphs are static so we have no need for variable
+  parameters.
+  :param graph: TFMin.Graph to process
+  :return: None
+  """
+  tensor_param_ops = {'TransposedConv2D': [{'Idx': 0, 'Action': 'Remove'}]}
+
+  for op in graph.ops:
+    if op.type in tensor_param_ops.keys():
+      for param_spec in tensor_param_ops[op.type]:
+        idx = param_spec['Idx']
+        if param_spec['Action'] == 'Remove':
+          graph.remove([op.inputs[idx]])
+          del op.inputs[idx]
 
 
 def graph_from_tf_sess(sess, outputs):
@@ -236,6 +321,7 @@ def graph_from_tf_sess(sess, outputs):
     :return: True on success, False on failure
     """
     new_graph = tg.Graph()
+    skipped_ops = []
 
     # Convert and strings in the outputs list to their tensor objects
     output_tensors = []
@@ -257,6 +343,10 @@ def graph_from_tf_sess(sess, outputs):
     for output_tensor in output_tensors:
         new_tensor = add_tf_tensor(new_graph, output_tensor, sess)
         new_tensor.type = tg.TenType.OUTPUT
+
+    # merge operation parameters which are stored in constant
+    # tensor inputs
+    merge_tensor_parameters(new_graph)
 
     mark_inputs(new_graph)
     mark_weights(new_graph, sess)

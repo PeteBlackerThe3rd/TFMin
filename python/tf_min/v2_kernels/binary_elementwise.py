@@ -155,10 +155,8 @@ class PoolingOpKernel(base.BaseOpKernel):
       dependencies['float.h'] = True
 
     # if the tanh fused activation function is used then math.h is requred
-    if (
-            'fused_activation_fn' in self.operation.params and
-            self.operation.params['fused_activation_fn'] == act_fns.ActType.TANH
-    ):
+    if ('fused_activation_fn' in self.operation.params and
+        self.operation.params['fused_activation_fn'] == act_fns.ActType.TANH):
       dependencies['math.h'] = True
 
     return dependencies
