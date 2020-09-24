@@ -83,12 +83,18 @@ class BaseOpKernel:
         returned.
         :return: String, the c code implementation of the activation function
         """
-        # TODO need to add code to extract all op params which are prefixed
-        #   with act_ and pass them as a list to get_act_code.
+        # extract any activation parameters
+        act_params = {}
+        for param_name in self.operation.params.keys():
+          if param_name[:4] == 'act_':
+            act_params[param_name] = self.operation.params[param_name]
+        # if an activation function was specified then generate it.
         act_fn = act_fns.ActType.NONE
         if 'fused_activation_fn' in self.operation.params.keys():
           act_fn = self.operation.params['fused_activation_fn']
-        return act_fns.gen_act_code(act_fn, self.operation.inputs[0].d_type)
+        return act_fns.gen_act_code(act_fn,
+                                    self.operation.inputs[0].d_type,
+                                    act_params)
 
     def compute_single_padding(self,
                                stride, dilation, in_size,
@@ -141,7 +147,7 @@ class BaseOpKernel:
 
         return {'pad_width': pad_width, 'pad_height': pad_height}
 
-    def generate(self, batch_size=1, prefix=""):
+    def generate(self, batch_size=1, prefix="", fake_weights=None):
         """
         Overridable method to generate the ansi-c code of this operation.
         This super class method generates the input and output pointers

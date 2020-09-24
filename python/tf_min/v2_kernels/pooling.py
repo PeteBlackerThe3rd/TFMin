@@ -218,7 +218,7 @@ class PoolingOpKernel(base.BaseOpKernel):
 
         return dependencies
 
-    def generate(self, batch_size=1, prefix=""):
+    def generate(self, batch_size=1, prefix="", fake_weights=None):
       """
       Overridable method to generate the ansi-c code of this operation.
       :return: String,
@@ -246,10 +246,12 @@ class PoolingOpKernel(base.BaseOpKernel):
           )
           sum_d_type = types.get_dtype_c_type(higher_d_type)
 
+      kernel_w = self.operation.params['kernel_width']
+      kernel_h = self.operation.params['kernel_width']
 
       padding = super().compute_padding(
-        filter_width=self.operation.params['filter_width'],
-        filter_height=self.operation.params['filter_height']
+        filter_width=kernel_w,
+        filter_height=kernel_h
       )
 
       # Get the offset function coefficients for the input and output tensors
@@ -278,8 +280,8 @@ class PoolingOpKernel(base.BaseOpKernel):
         'stride_height': self.operation.params['stride_height'],
         'padding_width': padding['pad_width'],
         'padding_height': padding['pad_height'],
-        'filter_width': self.operation.params['filter_width'],
-        'filter_height': self.operation.params['filter_height'],
+        'filter_width': kernel_w,
+        'filter_height': kernel_h,
         'D_TYPE': types.get_dtype_c_type(self.operation.inputs[0].d_type),
         'SUM_DATA_TYPE': sum_d_type,
         'MIN_MAX_COMPARISON': min_max_comparison,

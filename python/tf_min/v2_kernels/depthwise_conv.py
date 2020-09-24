@@ -106,7 +106,7 @@ class DepthwiseConv2DOpKernel(base.BaseOpKernel):
       """
       return "testing"
 
-    def generate(self, batch_size=1, prefix=""):
+    def generate(self, batch_size=1, prefix="", fake_weights=None):
       """
       Overridable method to generate the ansi-c code of this operation.
       :return: String,

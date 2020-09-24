@@ -35,7 +35,7 @@ class FullyConnectedOpKernel(base.BaseOpKernel):
     FC_TEMPLATE = """  
   // accum_depth is the last dimension of the input tensor
   // output_depth is the last dimension of the output tensor
-  D_TYPE *weightsData = input_1;
+  const D_TYPE *weightsData = input_1;
   for (int b = 0; b < batches; ++b) {
     for (int out_c = 0; out_c < output_depth; ++out_c) {
       D_TYPE value = zero_literal;
@@ -44,7 +44,7 @@ class FullyConnectedOpKernel(base.BaseOpKernel):
         // D_TYPE weightVal = weightsData[(out_c * accum_depth) + d];
         // TODO need to work out why the weights are transposed so this
         // line has needed altering.
-        D_TYPE weightVal = weightsData[out_c + (output_depth * d)];
+        D_TYPE weightVal = weightsData[(out_c + (output_depth * d)) fake_modifier];
         value += inputVal * weightVal;
       }
       BIAS_ADD
@@ -80,39 +80,24 @@ class FullyConnectedOpKernel(base.BaseOpKernel):
       """
       return "testing"
 
-    def generate(self, batch_size=1, prefix=""):
+    def generate(self, batch_size=1, prefix="", fake_weights=None):
       """
       Overridable method to generate the ansi-c code of this operation.
       :return: String,
       """
       # prepare values for code generate
       input_shape = self.operation.inputs[0].shape
-      # weights_shape = self.operation.inputs[1].shape
       output_shape = self.operation.outputs[0].shape
 
       bias_add = ""
       if len(self.operation.inputs) > 2:
         bias_add = "// Add Bias\nvalue += input_2[out_c];"
 
-      """# Get the offset function coefficients for the input and output tensors
-      (input_d1_coeff,
-       input_d2_coeff,
-       input_d3_coeff,
-       input_d4_coeff,
-       input_d_base) = \
-        self.operation.inputs[0].shape.get_layout_addressing_coeffs()
-      (filter_d1_coeff,
-       filter_d2_coeff,
-       filter_d3_coeff,
-       filter_d4_coeff,
-       filter_d_base) = \
-        self.operation.inputs[1].shape.get_layout_addressing_coeffs()
-      (output_d1_coeff,
-       output_d2_coeff,
-       output_d3_coeff,
-       output_d4_coeff,
-       output_d_base) = \
-        self.operation.outputs[0].shape.get_layout_addressing_coeffs()"""
+      fake_modifier = ""
+      if fake_weights is not None:
+        weights_d_type_size = types.get_dtype_size(
+          self.operation.inputs[1].d_type)
+        fake_modifier = " %% %d" % int(fake_weights / weights_d_type_size)
 
       # populate template dictionary used to transform template into final code
       template_values = {
@@ -122,7 +107,8 @@ class FullyConnectedOpKernel(base.BaseOpKernel):
         'D_TYPE': types.get_dtype_c_type(self.operation.inputs[0].d_type),
         'zero_literal': types.get_dtype_zero(self.operation.inputs[0].d_type),
         'BIAS_ADD': bias_add,
-        'ACTIVATION_FN': super().gen_act_code()
+        'ACTIVATION_FN': super().gen_act_code(),
+        'fake_modifier': fake_modifier
       }
 
       # generate buffer declarations

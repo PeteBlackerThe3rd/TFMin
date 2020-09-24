@@ -58,11 +58,11 @@ class Conv2DOpKernel(base.BaseOpKernel):
                                                  in_channel * input_d4_coeff +
                                                  input_d_base];
                     D_TYPE filter_value = 
-                        filter_data[out_channel * filter_d1_coeff +
-                                    filter_y * filter_d2_coeff +
-                                    filter_x * filter_d3_coeff +
-                                    in_channel * filter_d4_coeff +
-                                    filter_d_base];
+                        filter_data[(out_channel * filter_d1_coeff +
+                                     filter_y * filter_d2_coeff +
+                                     filter_x * filter_d3_coeff +
+                                     in_channel * filter_d4_coeff +
+                                     filter_d_base) fake_modifier];
                     value += input_value * filter_value;
                   }
                 }
@@ -155,7 +155,7 @@ class Conv2DOpKernel(base.BaseOpKernel):
 
     return safe_overlap
 
-  def generate(self, batch_size=1, prefix=""):
+  def generate(self, batch_size=1, prefix="", fake_weights=None):
     """
     Overridable method to generate the ansi-c code of this operation.
     :return: String,
@@ -194,6 +194,11 @@ class Conv2DOpKernel(base.BaseOpKernel):
      output_d_base) = \
         self.operation.outputs[0].shape.get_layout_addressing_coeffs()
 
+    fake_modifier = ""
+    if fake_weights is not None:
+      filter_d_type_size = types.get_dtype_size(self.operation.inputs[1].d_type)
+      fake_modifier = " %% %d" % int(fake_weights / filter_d_type_size)
+
     # populate template dictionary used to transform template into final code
     template_values = {
       'batches': input_shape[0],
@@ -222,6 +227,7 @@ class Conv2DOpKernel(base.BaseOpKernel):
       'filter_d3_coeff': filter_d3_coeff,
       'filter_d4_coeff': filter_d4_coeff,
       'filter_d_base': filter_d_base,
+      'fake_modifier': fake_modifier,
       'output_d1_coeff': output_d1_coeff,
       'output_d2_coeff': output_d2_coeff,
       'output_d3_coeff': output_d3_coeff,

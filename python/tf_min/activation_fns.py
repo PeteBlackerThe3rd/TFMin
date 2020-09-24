@@ -72,10 +72,10 @@ def gen_act_code(act_type, d_type, args=None):
     return ("// Error: SignBit activation function is not "
             "supported at this time.")
   elif act_type == ActType.LEAKY_RELU:
-    if args is None or len(args) != 1:
-      code = "// Leaky Relu, Alpha = %f\n" % args[0]
-      code += "if (value < 0)\n  value *= %f;\n" % args[0]
-      return code
-    else:
+    if args is None or 'act_alpha' not in args:
       print("Error: LeakyRelu specified with not Alpha coefficient!")
-      return "// Error: LeakyRelu specified with not Alpha coefficient!"
+      return "// Error: LeakyRelu specified with no Alpha coefficient!"
+    else:
+      code = "// Leaky Relu, Alpha = %f\n" % args['act_alpha']
+      code += "if (value < 0)\n  value *= %f;\n" % args['act_alpha']
+      return code

@@ -33,6 +33,7 @@ import struct as st
 import argparse
 import sys
 import os
+import random
 
 from tf_min import graph as tfm_g
 from tf_min import types
@@ -51,9 +52,22 @@ class CodeGenerator:
                    "converter.\n    Do not edit.\n*/\n"
 
     def __init__(self, graph, base_name="model_", prefix="", path=".",
-                 clang_format=None, byte_order="@", batch_size=1):
+                 clang_format=None, byte_order="@", batch_size=1,
+                 fake_weights=None):
         """
-
+        Create a CodeGenerator object for the give model and settings
+        :param graph: tf_min.Graph, model to export
+        :param base_name: String, prefix for all c itentifiers
+        :param prefix: String,
+        :param path: String, base path to generate code files in.
+        :param clang_format: String, or None, the code style to format to.
+        :param byte_order: String, struct compatable byte order string, used
+                           when writing weight literals as 32 bit hex.
+        :param batch_size: Int, the batch size to generate this model with.
+        :param fake_weights: Int or None, if an integer then a fake weights
+                             buffer of the given size will be used. Allows
+                             testing of models on platforms without enough
+                             memory to store a models weights.
         """
         # verify that this graph has been sequenced and intermediate
         # tensors have been pre-allocated.
@@ -67,6 +81,7 @@ class CodeGenerator:
             self.clang_format = clang_format
             self.byte_order = byte_order
             self.batch_size = batch_size
+            self.fake_weights = fake_weights
             self.export_ready = True
         else:
             # model is not ready for export,
@@ -81,10 +96,10 @@ class CodeGenerator:
             self.batch_size = 1
             self.export_ready = False
 
-    def __call__(self, silent=False):
+    def __call__(self, silent=False, debug=False):
         """
 
-        :return: True if expport successful, False operation
+        :return: True if export successful, False operation
         """
         if not self.export_ready:
             print("Error: Cannot generate code for a graph which isn't ready")
@@ -124,7 +139,7 @@ class CodeGenerator:
 
         if not silent:
             print("Generating model source.")
-        ms_okay = self.gen_model_source()
+        ms_okay = self.gen_model_source(debug=debug)
         if not silent:
             if ms_okay:
                 print("Complete.")
@@ -172,10 +187,17 @@ class CodeGenerator:
                        "area in bytes */\n\n" % (self.prefix.upper(),
                                                  self.tensor_arena_size))
 
-            # Add tesnor weight prototypes
-            for weight in self.graph.get_constants():
-                file.write(self.gen_weight_proto(weight))
-            file.write("\n")
+            if self.fake_weights is None:
+                # Add tesnor weight prototypes
+                for weight in self.graph.get_constants():
+                    file.write(self.gen_weight_proto(weight))
+                file.write("\n")
+            else:
+                file.write("char fake_weights[%d];\n\n" % self.fake_weights)
+                for weight in self.graph.get_constants():
+                    identifier = self.prefix + c_gen.c_safe_identifier(
+                      weight.label)
+                    file.write("extern const uint32_t *%s;\n" % identifier)
 
             file.write(self.gen_closing_include_guard(file_name))
             return True
@@ -184,21 +206,38 @@ class CodeGenerator:
             return False
 
     def gen_weights_source(self):
-        """Generate"""
-        file_name = self.base_name + "weights.c"
-        try:
-            file = open(os.path.join(self.path, file_name), "w")
-            file.write(CodeGenerator.BOILER_PLATE)
-            file.write("#include <%sweights.h>\n\n" % self.base_name)
+      """Generate"""
+      file_name = self.base_name + "weights.c"
+      try:
+        file = open(os.path.join(self.path, file_name), "w")
+        file.write(CodeGenerator.BOILER_PLATE)
+        file.write("#include \"%sweights.h\"\n\n" % self.base_name)
 
-            # Add tesnor weight definitions
-            for weight in self.graph.get_constants():
-                file.write(self.gen_weight_def(weight))
+        if self.fake_weights is None:
+          # Add tesnor weight definitions
+          for weight in self.graph.get_constants():
+            file.write(self.gen_weight_def(weight))
+        else:
+          for weight in self.graph.get_constants():
+            identifier = self.prefix + c_gen.c_safe_identifier(
+              weight.label)
+            weights_size = weight.get_buffer_size()
+            if weights_size >= self.fake_weights:
+              offset = 0
+            else:
+              weights_d_type_size = types.get_dtype_size(weight.d_type)
+              rand_max = ((self.fake_weights - weights_size) /
+                          weights_d_type_size)
+              offset = random.randint(0, rand_max-1) * weights_d_type_size
+            file.write("const uint32_t *%s = (uint32_t*)"
+                       "(fake_weights + %d);\n" % (
+              identifier, offset
+            ))
 
-            return True
-        except IOError as e:
-            print(e)
-            return False
+        return True
+      except IOError as e:
+        print(e)
+        return False
 
     def gen_model_header(self):
         """Generate"""
@@ -208,7 +247,7 @@ class CodeGenerator:
             file = open(os.path.join(self.path, file_name), "w")
             file.write(CodeGenerator.BOILER_PLATE)
             file.write(self.gen_opening_include_guard(file_name))
-            file.write("#include <%sweights.h>\n\n" % self.base_name)
+            file.write("#include \"%sweights.h\"\n\n" % self.base_name)
 
             # define model function prototype
             file.write("void %smodel(%s);\n\n" % (
@@ -236,18 +275,20 @@ class CodeGenerator:
 
         return None
 
-    def gen_model_source(self):
+    def gen_model_source(self, debug=False):
         """Generate"""
         file_name = self.base_name + "model.c"
         try:
             file = open(os.path.join(self.path, file_name), "w")
             file.write(CodeGenerator.BOILER_PLATE)
             # file.write("#include <float.h>\n")
-            file.write("#include <%smodel.h>\n" % self.base_name)
+            file.write("#include \"%smodel.h\"\n" % self.base_name)
 
             # find the operation kernel for each layer and find all
             # dependencies
             dependencies = {}
+            if debug:
+              dependencies['stdio.h'] = True
             for operation in self.graph.op_sequence:
                 kernel = CodeGenerator.find_kernel(operation, tags=[])
                 if kernel is not None:
@@ -267,18 +308,23 @@ class CodeGenerator:
             for operation in self.graph.op_sequence:
                 file.write("    /* %s op (%s) */\n" % (operation.type,
                                                        operation.label))
+                if debug:
+                  file.write("    printf(\"Start %s\\n\");\n" % operation.label)
                 file.write("    {\n")
 
                 kernel = CodeGenerator.find_kernel(operation, tags=[])
                 if kernel is not None:
                     kernel_instance = kernel(operation)
                     file.write(kernel_instance.generate(self.batch_size,
-                                                        self.prefix))
+                                                        self.prefix,
+                                                        self.fake_weights))
                 else:
                     print("Error: Couldn't find kernel to generate "
                           "code for %s operation." % operation.type)
 
                 file.write("    }\n")
+                if debug:
+                  file.write("    printf(\"End %s\\n\");\n" % operation.label)
 
             file.write("}\n")
 
@@ -302,7 +348,10 @@ class CodeGenerator:
         :param file_name:
         :return:
         """
-        macro = "__" + file_name.replace(".", "_").upper() + "__"
+        safe_macro_str = file_name
+        safe_macro_str = safe_macro_str.replace('.', '_')
+        safe_macro_str = safe_macro_str.replace('-', '_')
+        macro = "__" + safe_macro_str.upper() + "__"
         return "#ifndef %s\n#define %s\n" % (macro, macro)
 
     @staticmethod

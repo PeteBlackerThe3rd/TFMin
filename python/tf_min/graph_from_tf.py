@@ -311,6 +311,33 @@ def merge_tensor_parameters(graph):
           del op.inputs[idx]
 
 
+def reshape_filter_tensors(graph):
+  """
+  Tensorflow uses a [H, W, InChan, OutChan] filter tensor
+  indexing scheme. This function converts this to the standard used by
+  TFLite and this library which is [OutChan, H, W, InChan]
+  :param graph: tf_min.Graph to update in place
+  :return: Int, number of filter weights updated
+  """
+  # identify convolutional filter tensors
+  conv_ops = {'Conv2D': [1]}
+  filter_tensors = []
+  for opr in graph.ops:
+    if opr.type in conv_ops.keys():
+      input_filters = conv_ops[opr.type]
+      for input_idx in input_filters:
+        filter_tensors.append(opr.inputs[input_idx])
+
+  # reshape all filter tensors
+  for tensor in filter_tensors:
+    # TODO need to rearrange values as well!
+    new_shape = [tensor.shape[3],
+                 tensor.shape[0],
+                 tensor.shape[1],
+                 tensor.shape[2]]
+    tensor.shape = tg.TensorShape(new_shape)
+
+
 def graph_from_tf_sess(sess, outputs):
     """
     method to populate this grah from the given session and list of output
@@ -347,6 +374,9 @@ def graph_from_tf_sess(sess, outputs):
     # merge operation parameters which are stored in constant
     # tensor inputs
     merge_tensor_parameters(new_graph)
+
+    # convert filter tensors from TF indexing into TFMin/TFLite indexing
+    reshape_filter_tensors(new_graph)
 
     mark_inputs(new_graph)
     mark_weights(new_graph, sess)
