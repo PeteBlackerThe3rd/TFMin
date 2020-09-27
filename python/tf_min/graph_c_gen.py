@@ -148,20 +148,21 @@ class CodeGenerator:
                 print("Failed.")
 
         if self.clang_format is not None:
-            filenames = [os.path.join(self.path, self.base_name + 'model.c'),
-                         os.path.join(self.path, self.base_name + 'model.h'),
-                         os.path.join(self.path, self.base_name + 'weights.c'),
-                         os.path.join(self.path, self.base_name + 'weights.h')]
-            clang_command = ("clang-format %s -i -style=%s" % (
-              " ".join(filenames),
-              self.clang_format
-            ))
-            clang_stream = os.popen(clang_command)
-            clang_result = clang_stream.read().strip()
-            if clang_result == "":
-                print("Formatted code to style %s okay." % self.clang_format)
-            else:
-                print("Failed to format code with error :\n%s" % clang_result)
+          filenames = [os.path.join(self.path, self.base_name + 'model.c'),
+                       os.path.join(self.path, self.base_name + 'model.h'),
+                       os.path.join(self.path, self.base_name + 'weights.c'),
+                       os.path.join(self.path, self.base_name + 'weights.h')]
+          clang_command = ("clang-format %s -i -style=%s" % (
+            " ".join(filenames),
+            self.clang_format
+          ))
+          clang_stream = os.popen(clang_command)
+          clang_result = clang_stream.read().strip()
+          if clang_result == "":
+            if not silent:
+              print("Formatted code to style %s okay." % self.clang_format)
+          else:
+            print("Failed to format code with error :\n%s" % clang_result)
 
         if wh_okay and ws_okay and mh_okay and ms_okay:
             if not silent:

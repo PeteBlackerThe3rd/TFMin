@@ -177,13 +177,6 @@ int main(int argc, char **argv[]) {
                                  clang_format='Google',
                                  byte_order="@", batch_size=1
                                  )
-    '''c_generator = graph_c_gen.CodeGenerator(graph=graph,
-                                        base_name=self.base_name,
-                                        prefix="",
-                                        path=self.tmp_dir,
-                                        clang_format='Google',
-                                        byte_order="@", batch_size=1
-                                        )'''
     c_generator(silent=True)
     if verbose:
       print("Generated c code for model on test okay.")
@@ -217,7 +210,6 @@ int main(int argc, char **argv[]) {
     # generate makefile
     try:
       makefile = open(os.path.join(self.tmp_dir, 'Makefile'), 'w')
-
       makefile.write(base.BaseOpKernel.process_template(
         self.MAKEFILE_TEMPLATE,
         {"<compiler>": self.compiler,

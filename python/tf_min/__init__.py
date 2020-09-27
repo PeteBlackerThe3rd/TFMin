@@ -8,6 +8,7 @@ from .graph_c_gen import CodeGenerator
 from .timer_code_gen import TimingCodeGenerator
 from .deployment_runner import DeploymentRunner
 from .deployment_timer import DeploymentTimer
+from .deployment_timer_leon import DeploymentTimerLeon
 from .deployment_compare import DeploymentCompare, ComparisonResult
 
 # import memory optimisors

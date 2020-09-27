@@ -496,7 +496,7 @@ class TensorShape:
           self.dim_extra_steps
         )
 
-        print("get coeffs: sig_dims = %s" % sig_dims)
+        # print("get coeffs: sig_dims = %s" % sig_dims)
 
         # add batch to at most one -1 dimension size
         updated_count = 0

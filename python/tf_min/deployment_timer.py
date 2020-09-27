@@ -23,12 +23,10 @@
 
     ---------------------------------------------------------------------
 
-    This module contains the DeploymentRunner object which can generate,
-    build, and execute graphs within a special test harness allowing the
-    input and output tensors to be fed in via stdin and read out via stdout.
-
-    This object is used by the graph comparison and graph test objects,
-    to collect the results of a model deployed in a particular way
+    This module contains the DeploymentTimer object, this is a specialisation
+    of the DeploymentRunner object which generates sepcial timing
+    implementations of models. These models are executed and per layer
+    timing information is extracted and returned.
 """
 import scipy.io
 import numpy as np
@@ -152,6 +150,7 @@ int main(int argc, char **argv[]) {
     # run timing test N times
     for i in range(iterations):
       # start c test binary process
+
       test_process = sp.Popen(os.path.join(self.tmp_dir, "test"),
                               shell=False,
                               stdin=sp.PIPE,
@@ -162,13 +161,14 @@ int main(int argc, char **argv[]) {
       out, err = test_process.communicate()
 
       # extract results and find total runtime
-      layer_results[i, :] = self.parse_timing_results(out)
-      #for s in layer_results[i, :]:
-        #print("%f," % s, end='')
-      #print("")
+      results = self.parse_timing_results(out)
+      if len(results) != len(self.graph.op_sequence):
+        print("---- ERROR ----------------------------")
+        print("Timing model binary didn't produce the correct output")
+        results = [0.0] * len(self.graph.op_sequence)
+      layer_results[i, :] = results
 
     layer_durations = np.median(layer_results, 0)
-    # print("len_durations %d len ops %d" % (len(layer_durations), len(self.graph.op_sequence)))
 
     total_duration = layer_durations.sum()
 
