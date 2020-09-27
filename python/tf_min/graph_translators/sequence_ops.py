@@ -32,7 +32,7 @@ from enum import Enum
 import numpy as np
 import operator
 import tf_min.types as types
-from tf_min.graph_translators.graph_translator import GraphTranslator
+from .graph_translator import GraphTranslator
 
 
 class SequenceOps(GraphTranslator):
@@ -89,23 +89,3 @@ class SequenceOps(GraphTranslator):
         return
     else:
         return output_graph
-
-
-'''def sequence_ops(input_graph, params={}, inplace=False):
-    """
-    Convenience function so this translator can be used with a single
-    function call, without the need to setup the functionoid.
-    :param input_graph: Original graph object
-    :param params: Dictionary of parameters
-    :param inplace: Boolean, if true the input graph is modified,
-                    if false the input graph is cloned and modified and the
-                    new unique graph is returned.
-    :return: None, or new graph depending on inplace
-    """
-    translator = SequenceOps(params)
-
-    if inplace:
-        translator(input_graph, inplace=True)
-        return
-    else:
-        return translator(input_graph, inplace=False)'''

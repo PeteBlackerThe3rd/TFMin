@@ -23,16 +23,15 @@
 
     ---------------------------------------------------------------------
 
-    This module contains the basic Heap tensor pre-allocation allocation
-    algorithm.
+    This module contains the simple Heuristic heap-smart-order tensor
+    buffer pre-allocation algorithm. 
 """
 import numpy as np
 import tf_min.graph as tg
 from tf_min.mem_opt.memory_region import MemoryRegion
-from ..graph_translators.graph_translator import GraphTranslator
 
 
-class HeapAllocateGraph(GraphTranslator):
+class HeapSmartOrder(tg.GraphTranslator):
 
     def __init__(self, graph, params={}):
         super().__init__(graph)
@@ -51,18 +50,28 @@ class HeapAllocateGraph(GraphTranslator):
                   "hasn't been sequenced!")
         self.heap_allocate(order, batch_size)
 
+    def get_concrete_tensors(self, tensors):
+        """
+        Method return return a list of the concrete tensors from a list of
+        tensors operation. this is either the single or super tensors or if it
+        outputs a sub-tensor this is transformed to the corresponding
+        super-tensor.
+        :param tensors: list of tensors to filter
+        :return: list of concrete tensors.
+        """
+        conrete_tensors = []
+        for tensor in tensors:
+            # if this output is a mapped sub-tensor then promote the
+            # scope up-to the containing super-tensor
+            if tensor.meta_type == tg.TenMetaType.SUB:
+                tensor = tensor.super_tensor
+            if tensor.type == tg.TenType.INTERMEDIATE:
+              conrete_tensors.append(tensor)
+        return conrete_tensors
+
     def heap_allocate(self, order, batch_size):
 
-        print("-- starting to heap allocate tensors --")
-
-        # test safe overlap tensors are part of this graph
-        for tensor in self.output_graph.tensors:
-            if tensor.safe_overlap_preceding_tensor is not None:
-                preceding_idx = self.output_graph.get_tensor_idx(
-                  tensor.safe_overlap_preceding_tensor
-                )
-                if preceding_idx is None:
-                    print("Error preceding tensor link referrs to wrong graph!")
+        # print("-- starting to heap allocate tensors --")
 
         # reset offset and tensor buffer sizes
         for tensor in self.output_graph.tensors:
@@ -95,33 +104,58 @@ class HeapAllocateGraph(GraphTranslator):
                 else:
                     input.last_use_idx = max(input.last_use_idx, idx)
 
-        if order == 'backwards':
-          self.output_graph.op_sequence.reverse()
+        # initialise the set of tensors to start allocating
+        tensors_to_allocate = []
+        if order == 'forwards':
+            first = self.output_graph.op_sequence[0]
+            tensors_to_allocate.extend(self.get_concrete_tensors(first.outputs))
+        elif order == 'backwards':
+            last = self.output_graph.op_sequence[-1]
+            tensors_to_allocate.extend(self.get_concrete_tensors(last.inputs))
 
+        # While there are still tensors to allocate, allocate the one which
+        # is placed such that it's offset+size is lowest
         tensors_allocated = 0
-        for opr in self.output_graph.op_sequence:
-            for output in opr.outputs:
-                if output.meta_type is tg.TenMetaType.SUB:
-                    output = output.super_tensor
-                if output.type == tg.TenType.INTERMEDIATE and \
-                        not output.allocated():
-                    self.heap_allocate_tensor(output)
-                    tensors_allocated += 1
+        while tensors_to_allocate:
+            lowest_tensor = None
+            lowest_tensor_offset = None
 
-        if order == 'backwards':
-          self.output_graph.op_sequence.reverse()
+            # find the lowest tensor of the current tensors to allocate
+            for tensor in tensors_to_allocate:
+                offset = self.get_heap_allocated_offset(tensor) + tensor.buffer_size
+                if (lowest_tensor_offset is None or
+                        offset < lowest_tensor_offset):
+                    lowest_tensor = tensor
+                    lowest_tensor_offset = offset
+
+            # allocate this tensor and remove it from the to allocate list
+            lowest_tensor.memory_offset = (lowest_tensor_offset -
+                                           lowest_tensor.buffer_size)
+            tensors_to_allocate.remove(lowest_tensor)
+            tensors_allocated += 1
+
+            # add any un-allocated tensors with overlapping scopes with
+            # the lowest tensor to the tensors to allocate list
+            for tensor in self.output_graph.tensors:
+                if (not tensor.allocated() and
+                        tensor.type == tg.TenType.INTERMEDIATE and
+                        tensor.meta_type != tg.TenMetaType.SUB and
+                        tensor not in tensors_to_allocate and
+                        tensor.scope_overlaps(lowest_tensor)):
+                    tensors_to_allocate.append(tensor)
 
         self.summary = ("Allocated %d of %d intermediate tensor buffers,"
-                        "taking %s bytes" %
+                        "taking %s bytes (%d KB)" %
                         (tensors_allocated,
                          self.output_graph.count_tensors_by_type(
                            tg.TenType.INTERMEDIATE,
                            meta_type=[tg.TenMetaType.SINGLE,
                                       tg.TenMetaType.SUPER]
                          ),
-                         self.output_graph.get_peak_memory()))
+                         self.output_graph.get_peak_memory(),
+                         self.output_graph.get_peak_memory() / 1024))
 
-        #self.output_graph.find_peak_ops_and_tensors(highlight=(50, 50, 100))
+        # self.output_graph.find_peak_ops_and_tensors(highlight=(50, 50, 100))
 
     @staticmethod
     def scopes_overlap(tensor_a, tensor_b):
@@ -132,14 +166,12 @@ class HeapAllocateGraph(GraphTranslator):
             return False
         return True
 
-    def heap_allocate_tensor(self, new_tensor):
+    def get_heap_allocated_offset(self, new_tensor):
         """
-        Add a single buffer to the allocated block pattern using
-        a heap allocation method. I.e. the first free space.
-        This function takes advantage of diagonal memory optimisation if the
-        safe overlap attributes of the tensor objects have been populated.
+        Find the offset to place the tensor in the allocated block
+        pattern using a heap allocation method. I.e. the first free space.
         :param new_tensor: the tensor object to allocate
-        :return: None
+        :return: the offset to place this tensor at in bytes.
         """
 
         # create a list of all free regions of memory around the
@@ -157,10 +189,6 @@ class HeapAllocateGraph(GraphTranslator):
             # tensor region.
             if (tensor.safe_overlap_preceding_tensor == new_tensor and
                   tensor.safe_overlap_bytes is not None):
-              # print("Found a safe overlap during heap alloc")
-              # print("Reducing region size from %d to %d" %
-              #      (tensor_region.get_size(),
-              #       tensor_region.get_size() - tensor.safe_overlap_bytes))
               tensor_region.end -= tensor.safe_overlap_bytes
 
             for region in free_regions:
@@ -170,9 +198,21 @@ class HeapAllocateGraph(GraphTranslator):
         # add the new tensor buffer to the first region it fits into
         new_tensor_region = MemoryRegion(0, new_tensor.buffer_size)
         for region in free_regions:
-          if new_tensor_region.can_fit_inside(region):
-            new_tensor.memory_offset = region.start
-            break
+            if new_tensor_region.can_fit_inside(region):
+                return region.start
+        asset(False and "Error reached impossible point in heap "
+                        "allocate algorithm!")
+        return None
+
+    def heap_allocate_tensor(self, new_tensor):
+        """
+        Add a single buffer to the allocated block pattern using
+         a heap allocation method. I.e. the first free space.
+        :param new_tensor: the tensor object to allocate
+        :return: None
+        """
+        offset = self.get_heap_allocated_offset(new_tensor)
+        new_tensor.memory_offset = offset
 
     def translate(self, verbose=False):
         if verbose:

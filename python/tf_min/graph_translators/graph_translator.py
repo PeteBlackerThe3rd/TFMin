@@ -32,6 +32,7 @@ from enum import Enum
 import numpy as np
 import operator
 import tf_min.types as types
+from ..graph import Graph, Tensor, Operation, TenType, TenMetaType
 
 
 class GraphTranslator:
@@ -54,7 +55,7 @@ class GraphTranslator:
     """
     # If a dictionary was given then copy it to settings and merge with
     # and undefined default settings
-    self.parameters = self.DEFAULT_PARAMS
+    self.parameters = copy.copy(self.DEFAULT_PARAMS)
     self.summary = ""
 
     # if a dictionary was passed to source then add this parameters
@@ -107,16 +108,106 @@ class GraphTranslator:
       xml_node.setAttribute(setting, value)
     return xml_node
 
+  @staticmethod
+  def clone(graph):
+    cloned_graph = Graph()
+
+    # copy tensors and ops
+    for tensor in graph.tensors:
+      cloned_graph.tensors.append(Tensor(tensor))
+    for opr in graph.ops:
+      cloned_graph.ops.append(Operation(opr))
+
+    # update internal references within new tensors
+    for idx, tensor in enumerate(cloned_graph.tensors):
+
+      # update creating_op reference
+      if tensor.creating_op is not None:
+        creating_op_idx = (
+          graph.get_opr_idx(graph.tensors[idx].creating_op)
+        )
+        tensor.creating_op = cloned_graph.ops[creating_op_idx]
+
+      # update output references
+      for i, output in enumerate(graph.tensors[idx].dependent_ops):
+        output_idx = graph.get_opr_idx(output)
+        tensor.dependent_ops[i] = cloned_graph.ops[output_idx]
+
+      # update super tensor reference
+      if tensor.super_tensor is not None:
+        super_tensor_idx = (
+          graph.get_tensor_idx(graph.tensors[idx].super_tensor)
+        )
+        tensor.super_tensor = cloned_graph.tensors[super_tensor_idx]
+
+      # update sub_tensor references
+      if tensor.meta_type == TenMetaType.SUPER:
+        for i, sub_tensor in enumerate(graph.tensors[idx].sub_tensors):
+          sub_tensor_idx = graph.get_tensor_idx(sub_tensor)
+          tensor.sub_tensors[i] = cloned_graph.tensors[sub_tensor_idx]
+
+      # update safe overlap preceding tensor reference
+      if tensor.safe_overlap_preceding_tensor is not None:
+        preceding_tensor_idx = (graph.get_tensor_idx(
+          graph.tensors[idx].safe_overlap_preceding_tensor
+        ))
+        tensor.safe_overlap_preceding_tensor = \
+          cloned_graph.tensors[preceding_tensor_idx]
+
+      """if len(graph.tensors[idx].sub_tensors) > 0:
+          print("Cloning a tensor with %d sub tensors of type [%s] "
+                "(first sub tensor is [%s] idx [%s])" %
+                (len(graph.tensors[idx].sub_tensors),
+                 tensor.meta_type,
+                 graph.tensors[idx].sub_tensors[0],
+                 graph.get_tensor_idx(
+                  graph.tensors[idx].sub_tensors[0])))"""
+
+    # update internal references within new operations
+    for idx, opr in enumerate(cloned_graph.ops):
+      for i, input in enumerate(graph.ops[idx].inputs):
+        input_idx = graph.get_tensor_idx(input)
+        opr.inputs[i] = cloned_graph.tensors[input_idx]
+      for i, output in enumerate(graph.ops[idx].outputs):
+        output_idx = graph.get_tensor_idx(output)
+        opr.outputs[i] = cloned_graph.tensors[output_idx]
+
+    # update sequence references if they exist
+    if graph.op_sequence is not None:
+      cloned_graph.update_sequence_references()
+
+    # cloned_graph = copy.deepcopy(graph)
+
+    return cloned_graph
+
+  def operate(self, input_graph):
+    """
+    Overloadable base class method which will perform the actual operation
+    of this graph translator. This is the only method which much be
+    overriden by child classes.
+    :param input_graph: tf_min.Graph object to operate on
+    :return: None
+    """
+    self.summary = "Base Graph Translator Object called. " \
+                   "Returning unchanged graph."
+
   def __call__(self, input_graph, inplace=True):
     """
     Overload making this object callable, base class implementation
     takes an input Graph clones it and returns it unchanged.
-    :param input_graph:
+    :param input_graph: tf_min.Graph object to operate on
+    :param inplace: Boolean, if True the graph is modified inplace if
+                    False then the graph is cloned modified and returned.
     :return:
     """
-    self.summary = "Base Graph Translator Object called. " \
-                   "Returning unchanged graph."
     if inplace:
-        return None
+        output_graph = input_graph
     else:
-        return input_graph.clone()
+        output_graph = self.clone(input_graph)
+
+    self.operate(output_graph)
+
+    if inplace:
+        return
+    else:
+        return output_graph

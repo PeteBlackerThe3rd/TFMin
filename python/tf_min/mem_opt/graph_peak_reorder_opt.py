@@ -31,9 +31,10 @@ import numpy as np
 import tf_min.graph as tg
 from tf_min.mem_opt.memory_region import MemoryRegion
 import tf_min.graph_mem_2_svg as mem_2_svg
+from ..graph_translators.graph_translator import GraphTranslator
 
 
-class PeakReorderAllocateGraph(tg.GraphTranslator):
+class PeakReorderAllocateGraph(GraphTranslator):
 
     def __init__(self, graph, params={}):
         super().__init__(graph)

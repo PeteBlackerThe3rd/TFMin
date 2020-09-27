@@ -51,7 +51,7 @@ import operator
 import tf_min.graph as tg
 import tf_min.types as types
 from tf_min.activation_fns import ActType
-from tf_min.graph_translators.graph_translator import GraphTranslator
+from .graph_translator import GraphTranslator
 
 
 class RemoveIdentityOps(GraphTranslator):

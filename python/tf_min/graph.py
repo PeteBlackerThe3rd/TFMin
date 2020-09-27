@@ -46,7 +46,7 @@ class TenMetaType(Enum):
     SUPER = 3
 
 
-class GraphTranslator2:
+'''class GraphTranslator2:
     """
     GraphTranslator functionoid base class, defines the mechanism for
     loading settings and serializing and deserializing to and from XML
@@ -401,7 +401,7 @@ class FuseConvOps(GraphTranslator):
     def translate(self, verbose=False):
         if verbose:
           print(self.summary)
-        return self.output_graph
+        return self.output_graph'''
 
 
 class TensorShape:

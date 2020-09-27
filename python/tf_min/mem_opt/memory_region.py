@@ -55,10 +55,10 @@ class MemoryRegion:
       return [self]
 
     # if the new region overlaps completely with this one.
-    if new_region.start <= self.start and \
-            ((
-                     new_region.end is None and self.end is None) or new_region.end is None or (
-                     self.end is not None and new_region.end >= self.end)):
+    if (new_region.start <= self.start and
+        ((new_region.end is None and self.end is None) or
+         new_region.end is None or
+         (self.end is not None and new_region.end >= self.end))):
       # print("Carve returning empty set")
       return []
 
@@ -69,12 +69,12 @@ class MemoryRegion:
       return [MemoryRegion(new_region.end, self.end)]
 
     # if the new region overlaps with the end of this region
-    if self.end is not None and new_region.start < self.end and new_region.end >= self.end:
+    if self.end is not None and (new_region.start < self.end < new_region.end):
       # print("Carve shortening the end of this region")
       return [MemoryRegion(self.start, new_region.start)]
 
-    # The only option left now is that the new rigion bisects this one, so return the two parts
-    # print("Carve bisecting this region")
+    # The only option left now is that the new rigion bisects this one,
+    # so return the two parts print("Carve bisecting this region")
     return [MemoryRegion(self.start, new_region.start),
             MemoryRegion(new_region.end, self.end)]
 

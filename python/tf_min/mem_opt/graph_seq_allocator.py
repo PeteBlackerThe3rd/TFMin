@@ -30,9 +30,10 @@
 import numpy as np
 import tf_min.graph as tg
 from tf_min.mem_opt.memory_region import MemoryRegion
+from ..graph_translators.graph_translator import GraphTranslator
 
 
-class SeqAllocateGraph(tg.GraphTranslator):
+class SeqAllocateGraph(GraphTranslator):
 
     def __init__(self, graph, params={}):
         super().__init__(graph)
