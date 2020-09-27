@@ -28,7 +28,8 @@
 """
 import tf_min.graph as tg
 import tf_min.types as types
-from tf_min import cpp_code_gen as c_gen
+#from tf_min import cpp_code_gen as c_gen
+from tf_min import graph_c_gen as c_gen
 import tf_min.activation_fns as act_fns
 
 
@@ -162,7 +163,7 @@ class BaseOpKernel:
               buffer_declarations += "    const {0} *input_{1} = p_{2};\n".format(
                   types.get_dtype_c_type(input.d_type),
                   idx,
-                  c_gen.c_safe_identifier(input.label)
+                  c_gen.CodeGenerator.c_safe_identifier(input.label)
               )
           elif input.type == tg.TenType.CONSTANT:
               buffer_declarations += \
@@ -170,7 +171,7 @@ class BaseOpKernel:
                   types.get_dtype_c_type(input.d_type),
                   idx,
                   prefix,
-                  c_gen.c_safe_identifier(input.label)
+                  c_gen.CodeGenerator.c_safe_identifier(input.label)
                 )
           else:
               buffer_declarations += \
@@ -184,7 +185,7 @@ class BaseOpKernel:
             buffer_declarations += "    {0} *output_{1} = p_{2};\n".format(
               types.get_dtype_c_type(output.d_type),
               idx,
-              c_gen.c_safe_identifier(output.label)
+              c_gen.CodeGenerator.c_safe_identifier(output.label)
             )
           else:
             buffer_declarations += \

@@ -26,11 +26,11 @@
     This module contains the base operation kernel for generating ansi-c
     code for the v2 architecture.
 """
-import tf_min.v2_kernels.base_op_kernel as base
+from .base_op_kernel import BaseOpKernel
 import tf_min.types as types
 
 
-class FullyConnectedOpKernel(base.BaseOpKernel):
+class FullyConnectedOpKernel(BaseOpKernel):
 
     FC_TEMPLATE = """  
   // accum_depth is the last dimension of the input tensor
@@ -115,7 +115,7 @@ class FullyConnectedOpKernel(base.BaseOpKernel):
       code = super().generate(batch_size, prefix)
 
       # merge template to generate c implementation of conv 2D layer
-      code += base.BaseOpKernel.process_template(
+      code += BaseOpKernel.process_template(
         FullyConnectedOpKernel.FC_TEMPLATE,
           template_values
       )

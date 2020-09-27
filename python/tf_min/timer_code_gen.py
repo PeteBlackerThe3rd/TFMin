@@ -26,19 +26,6 @@
     This module contains a specialised code generator which produces a model
     implementation which outputs timing information to stdout
 """
-'''import scipy.io
-import numpy as np
-import struct as st
-import argparse
-import sys
-import os
-import random
-from tf_min import graph as tfm_g
-from tf_min import types
-from tf_min import cpp_code_gen as c_gen
-from tf_min.v2_kernels import *
-from tf_min.v2_kernels.base_op_kernel import BaseOpKernel
-from tf_min.v2_kernels.pooling import PoolingOpKernel'''
 from .graph_c_gen import CodeGenerator
 
 

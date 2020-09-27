@@ -35,13 +35,13 @@ import sys
 import os
 import random
 
-from tf_min import graph as tfm_g
+# from tf_min import graph as tfm_g
 from tf_min import types
-from tf_min import cpp_code_gen as c_gen
+# from tf_min import cpp_code_gen as c_gen
 
-from tf_min.v2_kernels import *
-from tf_min.v2_kernels.base_op_kernel import BaseOpKernel
-from tf_min.v2_kernels.pooling import PoolingOpKernel
+from .op_kernels import *
+from .op_kernels.base_op_kernel import BaseOpKernel
+# from tf_min.v2_kernels.pooling import PoolingOpKernel
 
 
 class CodeGenerator:
@@ -171,6 +171,38 @@ class CodeGenerator:
         else:
             return False
 
+    @staticmethod
+    def c_safe_identifier(input_str):
+      """
+      Method which converts an arbitrary input string into a c safe identifier
+      This function will mangle names insuch a way that any two different
+      input strings will always produce different identifiers.
+      :param input_str: String to convert to a c identifier
+      :return: String, the converted identifier
+      """
+      nums = "0123456789"
+      chars = "abcdefghijklmnopqrstuvwxyz"
+      valid_chars = "_" + nums + chars + chars.upper()
+
+      assert len(input_str) > 0, "Error cannot create a c safe identifier " \
+                                 "from the empty string"
+
+      identifier = ""
+
+      # if the input begins with a number then prefix the identifier with an
+      # underscore
+      if input_str[0] in nums:
+        identifier = "_"
+
+      # add input string replacing invalid chars with their ascii codes
+      for char in input_str:
+        if char in valid_chars:
+          identifier += char
+        else:
+          identifier += "_%d" % ord(char)
+
+      return identifier
+
     def gen_weights_header(self):
         """
         Method to generate the header file for the model weights, also
@@ -197,7 +229,7 @@ class CodeGenerator:
             else:
                 file.write("char fake_weights[%d];\n\n" % self.fake_weights)
                 for weight in self.graph.get_constants():
-                    identifier = self.prefix + c_gen.c_safe_identifier(
+                    identifier = self.prefix + self.c_safe_identifier(
                       weight.label)
                     file.write("extern const uint32_t *%s;\n" % identifier)
 
@@ -221,7 +253,7 @@ class CodeGenerator:
             file.write(self.gen_weight_def(weight))
         else:
           for weight in self.graph.get_constants():
-            identifier = self.prefix + c_gen.c_safe_identifier(
+            identifier = self.prefix + self.c_safe_identifier(
               weight.label)
             weights_size = weight.get_buffer_size()
             if weights_size >= self.fake_weights:
@@ -396,7 +428,7 @@ class CodeGenerator:
         :param tensor: TFMin.Tensor object
         :return: String, the prototype of the weights const global definition
         """
-        identifier = self.prefix + c_gen.c_safe_identifier(tensor.label)
+        identifier = self.prefix + self.c_safe_identifier(tensor.label)
         return "extern const uint32_t %s[];\n" % identifier
 
     def gen_function_paramers(self):
@@ -409,10 +441,10 @@ class CodeGenerator:
         d_types = ['void']
         for input in self.graph.get_inputs():
             identifiers.append('const p_' +
-                               c_gen.c_safe_identifier(input.label))
+                               self.c_safe_identifier(input.label))
             d_types.append(types.get_dtype_c_type(input.d_type))
         for output in self.graph.get_outputs():
-            identifiers.append('p_' + c_gen.c_safe_identifier(output.label))
+            identifiers.append('p_' + self.c_safe_identifier(output.label))
             d_types.append(types.get_dtype_c_type(output.d_type))
         params = []
         for idx, identifier in enumerate(identifiers):
@@ -426,7 +458,7 @@ class CodeGenerator:
         :param tensor:
         :return:
         """
-        identifier = self.prefix + c_gen.c_safe_identifier(tensor.label)
+        identifier = self.prefix + self.c_safe_identifier(tensor.label)
 
         if tensor.value is None:
           print("Tensor [%s] value is None!" % tensor.label)

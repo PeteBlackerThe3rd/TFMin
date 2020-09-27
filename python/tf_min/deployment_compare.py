@@ -41,8 +41,8 @@ import select
 
 from tf_min import graph as tfm_g
 from tf_min import types
-from tf_min import cpp_code_gen as c_gen
-from tf_min import graph_c_gen
+# from tf_min import cpp_code_gen as c_gen
+# from tf_min import graph_c_gen
 from tf_min import exceptions as exc
 from tf_min.deployment_runner import DeploymentRunner
 

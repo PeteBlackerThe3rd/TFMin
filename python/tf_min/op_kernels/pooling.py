@@ -27,12 +27,12 @@
     code for the v2 architecture.
 """
 import math as m
-import tf_min.v2_kernels.base_op_kernel as base
+from .base_op_kernel import BaseOpKernel
 import tf_min.types as types
 import tf_min.activation_fns as act_fns
 
 
-class PoolingOpKernel(base.BaseOpKernel):
+class PoolingOpKernel(BaseOpKernel):
 
     MIN_MAX_POOL_TEMPLATE = """
     for (int batch = 0; batch < batches; ++batch) {
@@ -304,12 +304,12 @@ class PoolingOpKernel(base.BaseOpKernel):
 
       # merge template to generate c implementation of pooling layer
       if self.operation.type == 'AvgPool':
-        code += base.BaseOpKernel.process_template(
+        code += BaseOpKernel.process_template(
             PoolingOpKernel.AVG_POOL_TEMPLATE,
             template_values
         )
       else:
-        code += base.BaseOpKernel.process_template(
+        code += BaseOpKernel.process_template(
             PoolingOpKernel.MIN_MAX_POOL_TEMPLATE,
             template_values
         )

@@ -3,7 +3,9 @@
     This means that simply adding a python file will mean it can be
     imported using 'from op_kernels import *'
 """
-from os.path import dirname, basename, isfile
-import glob
-modules = glob.glob(dirname(__file__)+"/*.py")
-__all__ = [ basename(f)[:-3] for f in modules if isfile(f) and not f.endswith('__init__.py')]
+from .base_op_kernel import BaseOpKernel
+from .binary_elementwise import BinaryElementwise
+from .conv_2d import Conv2DOpKernel
+from .depthwise_conv import DepthwiseConv2DOpKernel
+from .fully_connected import FullyConnectedOpKernel
+from .pooling import PoolingOpKernel

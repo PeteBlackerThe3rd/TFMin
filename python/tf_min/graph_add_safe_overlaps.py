@@ -26,13 +26,8 @@
     ...
 """
 import tf_min.graph as tm
-
-# use the dynamic op_kernel_loader to import op_kernels from all requires paths
-from tf_min.op_kernels import base_op
-from tf_min.v2_kernels.base_op_kernel import BaseOpKernel
-from tf_min.v2_kernels import *
-# import tf_min.op_kernels.import_op_kernels as op_kernel_loader
-# op_kernel_loader.import_op_kernels(verbose=False)
+from tf_min.op_kernels.base_op_kernel import BaseOpKernel
+from tf_min.op_kernels import *
 
 
 def add_safe_overlaps_to_graph(graph, verbose=False):

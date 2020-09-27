@@ -17,6 +17,9 @@ from .mem_opt import *
 # import graph translators
 from .graph_translators import *
 
+# import operation kernels
+from .op_kernels import *
+
 # import export graph translator objects
 from .graph_2_svg import SVGWriter
 from .graph_mem_2_svg import SVGMemoryWriter

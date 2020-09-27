@@ -33,11 +33,11 @@
     contiguous arrays are performmed using a single loop, other cases use
     the more complex template.
 """
-import tf_min.v2_kernels.base_op_kernel as base
+from .base_op_kernel import BaseOpKernel
 import tf_min.types as types
 
 
-class BinaryElementwise(base.BaseOpKernel):
+class BinaryElementwise(BaseOpKernel):
   SIMPLE_BINARY_TEMPLATE = """
     for (unsigned int n = 0; n < element_count; ++n) {
     
@@ -186,12 +186,12 @@ class BinaryElementwise(base.BaseOpKernel):
 
     # merge template to generate c implementation of pooling layer
     if self.operation.type == 'AvgPool':
-      code += base.BaseOpKernel.process_template(
+      code += BaseOpKernel.process_template(
         PoolingOpKernel.AVG_POOL_TEMPLATE,
         template_values
       )
     else:
-      code += base.BaseOpKernel.process_template(
+      code += BaseOpKernel.process_template(
         PoolingOpKernel.MIN_MAX_POOL_TEMPLATE,
         template_values
       )

@@ -27,11 +27,11 @@
     code for the v2 architecture.
 """
 import math as m
-import tf_min.v2_kernels.base_op_kernel as base
+from .base_op_kernel import BaseOpKernel
 import tf_min.types as types
 
 
-class Conv2DOpKernel(base.BaseOpKernel):
+class Conv2DOpKernel(BaseOpKernel):
 
   CONV_2D_TEMPLATE = """
     const D_TYPE *filter_data = input_1;
@@ -241,7 +241,7 @@ class Conv2DOpKernel(base.BaseOpKernel):
     code = super().generate(batch_size, prefix)
 
     # merge template to generate c implementation of conv 2D layer
-    code += base.BaseOpKernel.process_template(
+    code += BaseOpKernel.process_template(
         Conv2DOpKernel.CONV_2D_TEMPLATE,
         template_values
     )

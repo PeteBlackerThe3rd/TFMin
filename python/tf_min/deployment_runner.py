@@ -43,10 +43,10 @@ import select
 
 from tf_min import graph as tfm_g
 from tf_min import types
-from tf_min import cpp_code_gen as c_gen
+# from tf_min import cpp_code_gen as c_gen
 from tf_min import graph_c_gen
 from tf_min import exceptions as exc
-import tf_min.v2_kernels.base_op_kernel as base
+from tf_min.op_kernels.base_op_kernel import BaseOpKernel
 
 
 class DeploymentRunner:
@@ -210,7 +210,7 @@ int main(int argc, char **argv[]) {
     # generate makefile
     try:
       makefile = open(os.path.join(self.tmp_dir, 'Makefile'), 'w')
-      makefile.write(base.BaseOpKernel.process_template(
+      makefile.write(BaseOpKernel.process_template(
         self.MAKEFILE_TEMPLATE,
         {"<compiler>": self.compiler,
          "<base_name>": self.base_name,
@@ -244,7 +244,7 @@ int main(int argc, char **argv[]) {
           idx
         ))
 
-      source.write(base.BaseOpKernel.process_template(
+      source.write(BaseOpKernel.process_template(
         self.SOURCE_TEMPLATE,
         {"<basename>": self.base_name,
          "<input_count>": len(input_sizes),
