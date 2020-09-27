@@ -384,6 +384,6 @@ def graph_from_tf_sess(sess, outputs):
     # simplify graph by removing and merging operations
     pipeline = Pipeline(builtin="SimplifyTFGraph")
     pipeline(new_graph, inplace=True)
-    print(pipeline.summary())
+    # print(pipeline.summary())
 
     return new_graph

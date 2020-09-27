@@ -68,7 +68,7 @@ class GraphTranslator:
 
     # if any other type was passed to source then throw and assertion
     else:
-      assert false, "Error cannot instantiate GraphTranslator from a " \
+      assert False, "Error cannot instantiate GraphTranslator from a " \
                     "\"%s\" type." % type(source)
 
   @classmethod

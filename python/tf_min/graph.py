@@ -573,9 +573,9 @@ class TensorShape:
 
 
     def __getitem__(self, key):
-        assert isinstance(key, int), "Error TensorShape __getitem__ key " \
-                                     "must be an integer"
-        assert key >= 0 and key < len(self.shape), \
+        assert (isinstance(key, int) or isinstance(key, slice)), \
+          "Error TensorShape __getitem__ key must be an integer or slice"
+        assert isinstance(key, slice) or (key >= 0 and key < len(self.shape)), \
           "Error TensorShape __getitem__ key [%d] out of range" % key
         return self.shape[key]
 

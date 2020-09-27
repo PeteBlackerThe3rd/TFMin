@@ -98,7 +98,8 @@ class CodeGenerator:
 
     def __call__(self, silent=False, debug=False):
         """
-
+        Method which actually generates the c source files of the model and
+        its weights.
         :return: True if export successful, False operation
         """
         if not self.export_ready:
@@ -275,6 +276,26 @@ class CodeGenerator:
 
         return None
 
+    def get_preamble_dependencies(self):
+      return {}
+
+    def gen_model_fn_preamble(self):
+      """
+      Method used to generate a specific block of code which is run at the
+      start of the model inference function. Used in child classes
+      :return: String, c code to add.
+      """
+      return ""
+
+    def gen_opr_complete_code(self, op_idx):
+      """
+      Method used to generate a specific block of code after each operation
+      has completed, used in child classes.
+      :param op_idx: Sequence index of the operation completed
+      :return: String, c code to add.
+      """
+      return ""
+
     def gen_model_source(self, debug=False):
         """Generate"""
         file_name = self.base_name + "model.c"
@@ -286,7 +307,7 @@ class CodeGenerator:
 
             # find the operation kernel for each layer and find all
             # dependencies
-            dependencies = {}
+            dependencies = self.get_preamble_dependencies()
             if debug:
               dependencies['stdio.h'] = True
             for operation in self.graph.op_sequence:
@@ -304,8 +325,11 @@ class CodeGenerator:
                 self.gen_function_paramers()
             ))
 
+            # add inference preamble code
+            file.write(self.gen_model_fn_preamble())
+
             # write a code block for each operation
-            for operation in self.graph.op_sequence:
+            for idx, operation in enumerate(self.graph.op_sequence):
                 file.write("    /* %s op (%s) */\n" % (operation.type,
                                                        operation.label))
                 if debug:
@@ -325,6 +349,7 @@ class CodeGenerator:
                 file.write("    }\n")
                 if debug:
                   file.write("    printf(\"End %s\\n\");\n" % operation.label)
+                file.write(self.gen_opr_complete_code(idx))
 
             file.write("}\n")
 

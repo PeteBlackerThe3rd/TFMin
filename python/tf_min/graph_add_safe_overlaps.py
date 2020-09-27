@@ -46,7 +46,8 @@ def add_safe_overlaps_to_graph(graph, verbose=False):
   :return: None
   """
 
-  print("Found %d op kernels" % len(BaseOpKernel.__subclasses__()))
+  if verbose:
+    print("Found %d op kernels" % len(BaseOpKernel.__subclasses__()))
 
   safe_overlaps_found = 0
   for op in graph.ops:

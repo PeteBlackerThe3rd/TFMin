@@ -110,6 +110,28 @@ def get_dtype_c_type(d_type):
     return c_types[d_type]
 
 
+
+def get_dtype_description(d_type):
+  """
+  Function which returns a string describing this datatype
+  data type
+  :param d_type: TenDType, the data type
+  :return: String
+  """
+  c_types = {TenDType.FLOAT64: "float 64",
+             TenDType.FLOAT32: "float 32",
+             TenDType.FLOAT16: "float 16",
+             TenDType.INT64: "int 64",
+             TenDType.INT32: "int 32",
+             TenDType.INT16: "int 16",
+             TenDType.INT8: "int 8",
+             TenDType.UINT64: "unsigned int 64",
+             TenDType.UINT32: "unsigned int 32",
+             TenDType.UINT16: "unsigned int 16",
+             TenDType.UINT8: "unsigned int 8"}
+  return c_types[d_type]
+
+
 def get_dtype_lowest(d_type):
     """
     Function to return a string describing the lowest possible value this

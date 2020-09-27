@@ -144,6 +144,8 @@ int main(int argc, char **argv[]) {
 }
     """
 
+  GENERATOR = graph_c_gen.CodeGenerator
+
   def __init__(self, graph, verbose=False, tmp_dir=None,
                compiler="gcc",
                flags=['-O3']):
@@ -168,13 +170,20 @@ int main(int argc, char **argv[]) {
       self.tmp_dir = tmp_dir
 
     # generate the c test implementation of this graph
-    c_generator = graph_c_gen.CodeGenerator(graph=graph,
-                                            base_name=self.base_name,
-                                            prefix="",
-                                            path=tmp_dir,
-                                            clang_format='Google',
-                                            byte_order="@", batch_size=1
-                                            )
+    c_generator = self.GENERATOR(graph=graph,
+                                 base_name=self.base_name,
+                                 prefix="",
+                                 path=self.tmp_dir,
+                                 clang_format='Google',
+                                 byte_order="@", batch_size=1
+                                 )
+    '''c_generator = graph_c_gen.CodeGenerator(graph=graph,
+                                        base_name=self.base_name,
+                                        prefix="",
+                                        path=self.tmp_dir,
+                                        clang_format='Google',
+                                        byte_order="@", batch_size=1
+                                        )'''
     c_generator(silent=True)
     if verbose:
       print("Generated c code for model on test okay.")
@@ -210,7 +219,7 @@ int main(int argc, char **argv[]) {
       makefile = open(os.path.join(self.tmp_dir, 'Makefile'), 'w')
 
       makefile.write(base.BaseOpKernel.process_template(
-        GraphVerifyOutput.MAKEFILE_TEMPLATE,
+        self.MAKEFILE_TEMPLATE,
         {"<compiler>": self.compiler,
          "<base_name>": self.base_name,
          "<flags>": " ".join(flags)}
@@ -244,7 +253,7 @@ int main(int argc, char **argv[]) {
         ))
 
       source.write(base.BaseOpKernel.process_template(
-        GraphVerifyOutput.SOURCE_TEMPLATE,
+        self.SOURCE_TEMPLATE,
         {"<basename>": self.base_name,
          "<input_count>": len(input_sizes),
          "<output_count>": len(output_sizes),
@@ -266,6 +275,7 @@ int main(int argc, char **argv[]) {
       sp.run(['make', '-C', self.tmp_dir],
              check=True,
              stdout=sp.PIPE, stderr=sp.PIPE)
+      self.ready_to_execute = True
     except sp.CalledProcessError as e:
       msg = ("Error: Failed to build test harness.\n"
              "Return code %d\nError: %s" % (e.returncode,
