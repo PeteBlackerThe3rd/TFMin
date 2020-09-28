@@ -27,8 +27,8 @@
     code for the v2 architecture.
 """
 import tf_min.graph as tg
+from ..graph import TenType, TenMetaType, Tensor, Operation, Graph
 import tf_min.types as types
-#from tf_min import cpp_code_gen as c_gen
 from tf_min import graph_c_gen as c_gen
 import tf_min.activation_fns as act_fns
 
@@ -173,12 +173,29 @@ class BaseOpKernel:
                   prefix,
                   c_gen.CodeGenerator.c_safe_identifier(input.label)
                 )
-          else:
+          else:  # Intermediate Tensor
+            if (input.meta_type == TenMetaType.SINGLE or
+                    input.meta_type == TenMetaType.SUPER):
               buffer_declarations += \
                 "    const {0} *input_{1} = ({0}*)tensor_arena + {2};\n".format(
                   types.get_dtype_c_type(input.d_type),
                   idx,
                   int(input.memory_offset / types.get_dtype_size(input.d_type))
+                )
+            else:  # Must be a sub tensor so create ptr to super tensors addr
+              if input.super_tensor.type == TenType.INTERMEDIATE:
+                buffer_declarations += \
+                  "    const {0} *input_{1} = ({0}*)tensor_arena + {2};\n".format(
+                    types.get_dtype_c_type(input.d_type),
+                    idx,
+                    int(input.super_tensor.memory_offset /
+                        types.get_dtype_size(input.d_type))
+                  )
+              elif input.super_tensor.type == TenType.INPUT:
+                buffer_declarations += "    const {0} *input_{1} = p_{2};\n".format(
+                  types.get_dtype_c_type(input.d_type),
+                  idx,
+                  c_gen.CodeGenerator.c_safe_identifier(input.super_tensor.label)
                 )
         for idx, output in enumerate(self.operation.outputs):
           if output.type == tg.TenType.OUTPUT:

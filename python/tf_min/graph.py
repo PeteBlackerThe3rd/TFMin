@@ -587,6 +587,12 @@ class TensorShape:
                                                    "range"
         self.shape[key] = value
 
+    def __eq__(self, other):
+        assert isinstance(other, TensorShape), \
+          "Error: Comparing a tf_min.TensorShape to another type which isn't " \
+          "a tf_min.TensorShape."
+        return self.shape == other.shape
+
     def __str__(self):
         return str(self.shape)
 
@@ -826,9 +832,9 @@ class Graph:
                                   tensor.memory_offset + tensor.buffer_size)
             else:
                 if not silent:
-                    print("Error, cannot get peak_memory of a graph which "
-                          "contains intermediate tensors that have not been "
-                          "pre-allocated.")
+                  print("Error, cannot get peak_memory of a graph which "
+                        "contains intermediate tensors that have not been "
+                        "pre-allocated.")
                 return None
         return peak_memory
 

@@ -39,18 +39,24 @@
                    common calculation.
 
     FuseActivations : Many common layer operators in TFMin include optional
-                      fused activation functions. This translator detects
-                      separate activation functions and fuses them into the
-                      single layer operation.
+                      fused activation functions. It is more computationall
+                      and memory efficient to perform these activation
+                      functions in the same pass as the primary operation.
+                      This translator detects separate activation functions
+                      and fuses them into the single layer operation.
+
+    RemoveReshapeOps : Removes reshape operations where possible my mapping
+                       output tensors to the input tensor buffer.
 """
 import xml.dom as xmldom
 import copy
 from enum import Enum
 import numpy as np
 import operator
-import tf_min.graph as tg
+# import tf_min.graph as tg
 import tf_min.types as types
 from tf_min.activation_fns import ActType
+from ..graph import TenType, TenMetaType, Graph
 from .graph_translator import GraphTranslator
 
 
@@ -65,21 +71,16 @@ class RemoveIdentityOps(GraphTranslator):
   DESCRIPTION = 'Remove Identity Ops graph translator, removes these ' \
                 'operations from the graph.'
 
-  def __call__(self, input_graph, inplace=False):
+  def operate(self, input_graph):
     """
     Remove Identity from the graph, or cloned and returned.
     :param input_graph:
     :return:
     """
-    if inplace:
-        output_graph = input_graph
-    else:
-        output_graph = input_graph.clone()
-
     removed_count = 0
     items_to_remove = []
 
-    for opr in output_graph.ops:
+    for opr in input_graph.ops:
       # if an identity operation is found link it's input tensor to the
       # operation its output tensor links to, and add the op and it's output
       # to the items to remove list
@@ -87,7 +88,7 @@ class RemoveIdentityOps(GraphTranslator):
 
         # if the output of this identity is an intermediate tensor
         # then remove the output tensor
-        if opr.outputs[0].type == tg.TenType.INTERMEDIATE:
+        if opr.outputs[0].type == TenType.INTERMEDIATE:
           input_tensor = opr.inputs[0]
           output_ops = opr.outputs[0].dependent_ops
           for output_op in output_ops:
@@ -100,7 +101,7 @@ class RemoveIdentityOps(GraphTranslator):
 
         # otherwise if the input to this identity op is an intermediate
         # tensor then remove the input tensor.
-        elif opr.inputs[0].type == tg.TenType.INTERMEDIATE:
+        elif opr.inputs[0].type == TenType.INTERMEDIATE:
           input_op = opr.inputs[0].creating_op
           input_op_output_idx = input_op.outputs.index(opr.inputs[0])
           output_tensor = opr.outputs[0]
@@ -113,13 +114,8 @@ class RemoveIdentityOps(GraphTranslator):
         # if neither the input or output tensors are intermediate then
         # do not remove this identity op
 
-    output_graph.remove(items_to_remove)
+        input_graph.remove(items_to_remove)
     self.summary = ("Removed %d identity ops from the graph." % removed_count)
-
-    if inplace:
-        return
-    else:
-        return output_graph
 
 
 class FuseBiasAdds(GraphTranslator):
@@ -133,25 +129,20 @@ class FuseBiasAdds(GraphTranslator):
   DESCRIPTION = 'Fuse Bias Adds graph translator, fuses any separare bias ' \
                 'add operations with their preceding convolution operations.'
 
-  def __call__(self, input_graph, inplace=False):
+  def operate(self, input_graph):
     """
     Fuse any separare bias add operations with their preceding convolution
     operations.
     :param input_graph:
     :return:
     """
-    if inplace:
-        output_graph = input_graph
-    else:
-        output_graph = input_graph.clone()
-
     fusable_op_types = ['MatMul', 'Conv2D', 'DepthwiseConv2D',
                         'TransposedConv2D']
     bias_add_op_types = ['Add', 'BiasAdd']
     items_to_remove = []
     bias_additions_fused = 0
 
-    for opr in output_graph.ops:
+    for opr in input_graph.ops:
       if opr.type in fusable_op_types:
 
         # For this fusion to be possible the following op must be an Add
@@ -181,13 +172,8 @@ class FuseBiasAdds(GraphTranslator):
               output.creating_op = opr
             bias_additions_fused += 1
 
-    output_graph.remove(items_to_remove)
+        input_graph.remove(items_to_remove)
     self.summary = ("Fused %d bias adds." % bias_additions_fused)
-
-    if inplace:
-        return
-    else:
-        return output_graph
 
 
 class FuseActivations(GraphTranslator):
@@ -201,17 +187,12 @@ class FuseActivations(GraphTranslator):
   DESCRIPTION = 'Fuse Activations graph translator, fuses any separare ' \
                 'activations operations with their preceding operations.'
 
-  def __call__(self, input_graph, inplace=False):
+  def operate(self, input_graph):
     """
     Fuse any separare activation operations with their preceding operations.
     :param input_graph:
     :return:
     """
-    if inplace:
-        output_graph = input_graph
-    else:
-        output_graph = input_graph.clone()
-
     fusable_op_types = ['MatMul', 'Conv2D', 'DepthwiseConv2D',
                         'TransposedConv2D']
     activation_fns = {'Relu': ActType.RELU,
@@ -223,7 +204,7 @@ class FuseActivations(GraphTranslator):
     items_to_remove = []
     activations_fused = 0
 
-    for opr in output_graph.ops:
+    for opr in input_graph.ops:
       if opr.type in activation_fns.keys():
         act_input_tensor = opr.inputs[0]
         if len(act_input_tensor.dependent_ops) == 1:
@@ -241,13 +222,8 @@ class FuseActivations(GraphTranslator):
               output.creating_op = input_op
             activations_fused += 1
 
-    output_graph.remove(items_to_remove)
+        input_graph.remove(items_to_remove)
     self.summary = ("Fused %d activation functions." % activations_fused)
-
-    if inplace:
-        return
-    else:
-        return output_graph
 
 
 class RemoveReshapeOps(GraphTranslator):
@@ -262,62 +238,73 @@ class RemoveReshapeOps(GraphTranslator):
                 'either byremoving them or replacing them with ' \
                 're-mapped sub-tensors.'
 
-  def __call__(self, input_graph, inplace=False):
+  def operate(self, input_graph):
     """
     remove reshape operations either by
     removing them or replacing them with re-mapped sub-tensors
     :param input_graph:
     :return:
     """
-    if inplace:
-        output_graph = input_graph
-    else:
-        output_graph = input_graph.clone()
-
     items_to_remove = []
     pointless_reshapes_removed = 0
     reshapes_remapped = 0
 
-    for opr in output_graph.ops:
-        if opr.type == "Reshape":
-            old_shape = opr.inputs[0].shape.get_shape()
-            new_shape = opr.outputs[0].shape.get_shape()
-            if len(old_shape) == len(new_shape):
-                shapes_match = True
-                for idx, dim in enumerate(old_shape):
-                    if dim != new_shape[idx]:
-                        shapes_match = False
-                if shapes_match:
-                    if opr.outputs[0].type == tg.TenType.INTERMEDIATE:
-                        # remove this op and the ouput tensor
-                        items_to_remove.extend([opr, opr.outputs[0]])
-                        input_tensor = opr.inputs[0]
-                        output_ops = opr.outputs[0].dependent_ops
-                        input_tensor.dependent_ops = output_ops
-                        for output in output_ops:
-                            idx = output.inputs.index(opr.outputs[0])
-                            output.inputs[idx] = input_tensor
-                        pointless_reshapes_removed += 1
+    # Remove pointless reshapes (with the same input and output shapes)
+    for opr in input_graph.ops:
+      if opr.type == "Reshape" and opr.inputs[0].shape == opr.outputs[0].shape:
+        if opr.outputs[0].type == TenType.INTERMEDIATE:
+          # remove this op and the ouput tensor
+          items_to_remove.extend([opr, opr.outputs[0]])
+          input_tensor = opr.inputs[0]
+          output_ops = opr.outputs[0].dependent_ops
+          input_tensor.dependent_ops = output_ops
+          for output in output_ops:
+            idx = output.inputs.index(opr.outputs[0])
+            output.inputs[idx] = input_tensor
+          pointless_reshapes_removed += 1
 
-                    elif opr.inputs[0].type == tg.TenType.INTERMEDIATE:
-                        # remove this op and the input tensor
-                        items_to_remove.extend([opr, opr.inputs[0]])
-                        input_op = opr.inputs[0].creating_op
-                        output_tensor = opr.outputs[0]
-                        input_op.outputs = [output_tensor]
-                        output_tensor.creating_op = input_op
-                        pointless_reshapes_removed += 1
+        elif opr.inputs[0].type == TenType.INTERMEDIATE:
+          # remove this op and the input tensor
+          items_to_remove.extend([opr, opr.inputs[0]])
+          input_op = opr.inputs[0].creating_op
+          output_tensor = opr.outputs[0]
+          input_op.outputs = [output_tensor]
+          output_tensor.creating_op = input_op
+          pointless_reshapes_removed += 1
+    input_graph.remove(items_to_remove)
+    items_to_remove = []
 
-    output_graph.remove(items_to_remove)
-
-    # TODO find reshape operations which can be replaced by re-mappings
+    # Remove reshapes that don't expand or crop the tensor, so they can be
+    # re-mapped to the same buffer.
+    for opr in input_graph.ops:
+      if (opr.type == "Reshape" and
+              self.reshape_buffers_match(opr) and
+              opr.outputs[0].type != TenType.OUTPUT):
+        input_tensor = opr.inputs[0]
+        output_tensor = opr.outputs[0]
+        items_to_remove.append(opr)
+        input_tensor.meta_type = TenMetaType.SUPER
+        input_tensor.sub_tensors = [output_tensor]
+        input_tensor.dependent_ops = []
+        output_tensor.meta_type = TenMetaType.SUB
+        output_tensor.super_tensor = input_tensor
+        output_tensor.creating_op = None
+        reshapes_remapped += 1
+    input_graph.remove(items_to_remove)
 
     self.summary = ("Removed %d pointless reshape operations\n"
                     "Removed %d reshape operations via re-mapping" %
                     (pointless_reshapes_removed,
                      reshapes_remapped))
 
-    if inplace:
-        return
-    else:
-        return output_graph
+  @staticmethod
+  def reshape_buffers_match(reshape_op):
+    """
+    Convenience method which returns true if the sizes of the input and output
+    buffers of a reshape match. i.e. it doesn't crop or extend the input tensor
+    :param reshape_op: tf_min.Operation, reshape to check
+    :return: True of False
+    """
+    in_size = reshape_op.inputs[0].get_buffer_size()
+    out_size = reshape_op.outputs[0].get_buffer_size()
+    return in_size == out_size

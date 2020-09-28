@@ -33,6 +33,7 @@ import numpy as np
 import operator
 import tf_min.types as types
 import tf_min.graph as tg
+from ..graph import TenType, TenMetaType, Tensor, Operation, Graph
 from tf_min.mem_opt.memory_region import MemoryRegion
 from ..graph_translators.graph_translator import GraphTranslator
 
@@ -83,7 +84,8 @@ class HeapSmartOrder(GraphTranslator):
 
       # reset offset and tensor buffer sizes
       for tensor in graph.tensors:
-          if tensor.type == tg.TenType.INTERMEDIATE:
+          if (tensor.type == tg.TenType.INTERMEDIATE and
+                  tensor.meta_type != TenMetaType.SUB):
               tensor.memory_offset = None
               # element_count = np.prod(tensor.get_tensor_shape(batch_size))
               tensor.buffer_size = \
@@ -161,12 +163,12 @@ class HeapSmartOrder(GraphTranslator):
                       "taking %s bytes (%d KB)" %
                       (tensors_allocated,
                        graph.count_tensors_by_type(
-                         tg.TenType.INTERMEDIATE,
-                         meta_type=[tg.TenMetaType.SINGLE,
-                                    tg.TenMetaType.SUPER]
+                         TenType.INTERMEDIATE,
+                         meta_type=[TenMetaType.SINGLE,
+                                    TenMetaType.SUPER]
                        ),
                        graph.get_peak_memory(),
-                       graph.get_peak_memory() / 1024))
+                       0))  # graph.get_peak_memory() / 1024))
 
       # self.output_graph.find_peak_ops_and_tensors(highlight=(50, 50, 100))
 

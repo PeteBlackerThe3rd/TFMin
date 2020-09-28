@@ -28,6 +28,7 @@
 """
 import svgwrite as svg
 import tf_min.graph as tg
+from .graph import TenType, TenMetaType, Tensor, Operation, Graph
 
 
 class SVGWriter:
@@ -216,7 +217,8 @@ class SVGWriter:
                                          y),
                                  fill='black'))
       mem_str = ""
-      if tensor.get_buffer_size(1) is not None:
+      if (tensor.meta_type != TenMetaType.SUB and
+              tensor.get_buffer_size(1) is not None):
           mem_str = " (%d bytes)" % tensor.get_buffer_size()
       self.dwg.add(self.dwg.text("Shape %s%s" % (tensor.shape, mem_str),
                                  insert=((x - (self.tensor_width/2) +
@@ -297,14 +299,15 @@ class SVGWriter:
                 x_start += self.tensor_width + self.h_padding
 
             elif tensor.meta_type == tg.TenMetaType.SUPER:
-                    # if tensor doesn't have a creating op but it is a super
-                    # tensor then it may have multiple sub-tensors with creating
-                    # ops
+                # if tensor doesn't have a creating op, is a super
+                # tensor or is an input then it may have multiple
+                # sub-tensors with creating ops
                 # print("Drawing super tensor with [%d] sub-tensors" %
                 #       len(tensor.sub_tensors))
                 # if this is a pre-super tensor where the super tensor is
                 # populated first then sub-tensors read
-                if tensor.creating_op is not None:
+                if (tensor.creating_op is not None or
+                        tensor.type == TenType.INPUT):
                     super_tensor_y = y_pos - self.tensor_height
                     sub_tensor_y = y_pos
                 else:  # if this is a post-super tensor where the sub
@@ -371,12 +374,12 @@ class SVGWriter:
                 if ten.meta_type == tg.TenMetaType.SUB:
                     continue
 
-                # if tensor has no outputs then ignore it
                 deps = ten.dependent_ops.copy()
                 if ten.meta_type == tg.TenMetaType.SUPER:
                     for sub_ten in ten.sub_tensors:
                         deps.extend(sub_ten.dependent_ops)
 
+                # if tensor has no outputs then ignore it
                 if not deps:
                     # print("skipping tensor [%s] type [%s] with no deps" %
                     #      (ten.label,

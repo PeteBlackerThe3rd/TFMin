@@ -54,7 +54,8 @@ class GraphTranslator:
                    xml.dom.Node to read settings from.
     """
     # If a dictionary was given then copy it to settings and merge with
-    # and undefined default settings
+    # and undefined default settings, copy used to prevent default parameters
+    # from being altered
     self.parameters = copy.copy(self.DEFAULT_PARAMS)
     self.summary = ""
 

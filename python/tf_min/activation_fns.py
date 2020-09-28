@@ -34,13 +34,15 @@ class ActType(Enum):
   """
   Enum defining the types of activation functions supported by TFMin
   """
-  NONE = 0
-  RELU = 1
-  RELUN1TO1 = 2
-  RELU6 = 3
-  TANH = 4
-  SIGNBIT = 5
-  LEAKY_RELU = 6
+  NONE = 'None'
+  RELU = 'Relu'
+  RELUN1TO1 = 'Relu -1 to 1'
+  RELU6 = 'Relu 6'
+  TANH = 'Tanh'
+  SIGNBIT = 'Sign Bit'
+  LEAKY_RELU = 'Leaky Relu'
+  def __str__(self):
+    return str(self.value)
 
 
 def gen_act_code(act_type, d_type, args=None):
