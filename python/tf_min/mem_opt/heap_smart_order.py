@@ -23,8 +23,9 @@
 
     ---------------------------------------------------------------------
 
-    This module defines the graph translator base object from which all
-    graph translators are descended.
+    Heap Smart Order memory optimiser. This extends the basic Heap memory
+    optimiser by placing the tensors in an order such that the tensor
+    which will be placed at the lowest memory address is placed first.
 """
 import xml.dom as xmldom
 import copy
@@ -34,11 +35,12 @@ import operator
 import tf_min.types as types
 import tf_min.graph as tg
 from ..graph import TenType, TenMetaType, Tensor, Operation, Graph
-from tf_min.mem_opt.memory_region import MemoryRegion
-from ..graph_translators.graph_translator import GraphTranslator
+from .memory_region import MemoryRegion
+from .memory_optimiser import MemoryOptimiser
+# from ..graph_translators.graph_translator import GraphTranslator
 
 
-class HeapSmartOrder(GraphTranslator):
+class HeapSmartOrder(MemoryOptimiser):
   """
   Heap Smart Order memory optimiser
   """
@@ -58,7 +60,7 @@ class HeapSmartOrder(GraphTranslator):
     """
     self.heap_allocate(graph)
 
-  @staticmethod
+  '''@staticmethod
   def get_concrete_tensors(tensors):
       """
       Method return return a list of the concrete tensors from a list of
@@ -68,22 +70,23 @@ class HeapSmartOrder(GraphTranslator):
       :param tensors: list of tensors to filter
       :return: list of concrete tensors.
       """
-      conrete_tensors = []
+      concrete_tensors = []
       for tensor in tensors:
           # if this output is a mapped sub-tensor then promote the
           # scope up-to the containing super-tensor
           if tensor.meta_type == tg.TenMetaType.SUB:
               tensor = tensor.super_tensor
           if tensor.type == tg.TenType.INTERMEDIATE:
-            conrete_tensors.append(tensor)
-      return conrete_tensors
+            concrete_tensors.append(tensor)
+      return concrete_tensors'''
 
   def heap_allocate(self, graph):
 
       # print("-- starting to heap allocate tensors --")
 
       # reset offset and tensor buffer sizes
-      for tensor in graph.tensors:
+      self.reset_memory_layout(graph)
+      '''for tensor in graph.tensors:
           if (tensor.type == tg.TenType.INTERMEDIATE and
                   tensor.meta_type != TenMetaType.SUB):
               tensor.memory_offset = None
@@ -91,10 +94,11 @@ class HeapSmartOrder(GraphTranslator):
               tensor.buffer_size = \
                   tensor.get_buffer_size(self.parameters['BatchSize'])
               tensor.creation_idx = None
-              tensor.last_use_idx = None
+              tensor.last_use_idx = None'''
 
       # populate creation and final use of all tensors to allocate
-      for opr in graph.ops:
+      self.populate_tensor_scopes(graph)
+      '''for opr in graph.ops:
           idx = opr.sequence_index
           for output in opr.outputs:
               # if this output is a mapped sub-tensor then promote the
@@ -113,7 +117,7 @@ class HeapSmartOrder(GraphTranslator):
               if input.last_use_idx is None:
                   input.last_use_idx = idx
               else:
-                  input.last_use_idx = max(input.last_use_idx, idx)
+                  input.last_use_idx = max(input.last_use_idx, idx)'''
 
       # initialise the set of tensors to start allocating
       tensors_to_allocate = []
@@ -169,56 +173,6 @@ class HeapSmartOrder(GraphTranslator):
                        ),
                        graph.get_peak_memory(),
                        0))  # graph.get_peak_memory() / 1024))
-
-      # self.output_graph.find_peak_ops_and_tensors(highlight=(50, 50, 100))
-
-  @staticmethod
-  def scopes_overlap(tensor_a, tensor_b):
-
-      if tensor_a.creation_idx > tensor_b.last_use_idx:
-          return False
-      if tensor_b.creation_idx > tensor_a.last_use_idx:
-          return False
-      return True
-
-  def get_heap_allocated_offset(self, graph, new_tensor):
-      """
-      Find the offset to place the tensor in the allocated block
-      pattern using a heap allocation method. I.e. the first free space.
-      :param graph:
-      :param new_tensor: the tensor object to allocate
-      :return: the offset to place this tensor at in bytes.
-      """
-
-      # create a list of all free regions of memory around the
-      # tensors currently allocated which overlap with this tensors scope
-      free_regions = [MemoryRegion(0, None)]
-      for tensor in graph.tensors:
-        if tensor.allocated() and self.scopes_overlap(tensor, new_tensor):
-          new_free_regions = []
-          tensor_region = MemoryRegion(tensor.memory_offset,
-                                       (tensor.memory_offset +
-                                        tensor.buffer_size))
-
-          # if a safe overlap between this tensor and the tensor that's
-          # being allocated has been defined then reduce the size of this
-          # tensor region.
-          if (tensor.safe_overlap_preceding_tensor == new_tensor and
-                  tensor.safe_overlap_bytes is not None):
-              tensor_region.end -= tensor.safe_overlap_bytes
-
-          for region in free_regions:
-            new_free_regions.extend(region.get_carve_result(tensor_region))
-          free_regions = new_free_regions
-
-      # add the new tensor buffer to the first region it fits into
-      new_tensor_region = MemoryRegion(0, new_tensor.buffer_size)
-      for region in free_regions:
-          if new_tensor_region.can_fit_inside(region):
-              return region.start
-      asset(False and "Error reached impossible point in heap "
-                      "allocate algorithm!")
-      return None
 
   '''def heap_allocate_tensor(self, graph, new_tensor):
     """

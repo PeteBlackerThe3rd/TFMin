@@ -33,65 +33,48 @@ import math as m
 import copy as copy
 import numpy as np
 import tf_min.graph as tg
-import tf_min.mem_opt.graph_heap_opt as heap_opt
-import tf_min.mem_opt.graph_seq_allocator as seq_alloc
-import tf_min.graph_2_svg as graph_2_svg
-import tf_min.graph_mem_2_svg as mem_2_svg
+# import tf_min.mem_opt.graph_heap_opt as heap_opt
+# import tf_min.mem_opt.graph_seq_allocator as seq_alloc
+from ..graph_translators.graph_translator import GraphTranslator
+from ..graph_2_svg import SVGWriter
+from ..graph_mem_2_svg import SVGMemoryWriter
+# import tf_min.graph_mem_2_svg as mem_2_svg
+from .memory_optimiser import MemoryOptimiser
+from .heap_memory_allocator import HeapMemOpt
 
 sys.setrecursionlimit(10000)
 
-# from sys import getsizeof, stderr
-# from itertools import chain
-# from collections import deque
-# try:
-#    from reprlib import repr
-# except ImportError:
-#    pass
 
-# def total_size(o, handlers={}, verbose=False):
-""" Returns the approximate memory footprint an object and all of its contents.
+class OprSplitMemOpt(MemoryOptimiser):
+    """
+    Operation Splitting Memory Optimiser
+    """
 
-Automatically finds the contents of the following builtin containers and
-their subclasses:  tuple, list, deque, dict, set and frozenset.
-To search other containers, add handlers to iterate over their contents:
+    DEFAULT_PARAMS = {'Order': 'Backwards',
+                      'BatchSize': 1,
+                      'UseOverlaps': True,
+                      'BlockAllocator': HeapMemOpt,
+                      'BlockAllocatorParams': {},
+                      'OutputDebug': False,
+                      'SaveGraphs': True,
+                      'AttemptSeq': True}
+    TYPE = 'OperationSplitting'
+    DESCRIPTION = "Optimiser which splits large tensor operations" \
+                  "into smaller parallel streams to reduce the peak " \
+                  "memory requirement of the model."
 
-    handlers = {SomeContainerClass: iter,
-                OtherContainerClass: OtherContainerClass.get_elements}
+    SUPPORTED_CONV_OPS = ['Conv2D', 'DepthwiseConv2D']
+    SUPPORTED_POOL_OPS = ['MaxPool', 'MinPool', 'AvgPool']
 
-"""
-"""dict_handler = lambda d: chain.from_iterable(d.items())
-all_handlers = {tuple: iter,
-                list: iter,
-                deque: iter,
-                dict: dict_handler,
-                set: iter,
-                frozenset: iter,
-                }
-all_handlers.update(handlers)  # user handlers take precedence
-seen = set()  # track which object id's have already been seen
-default_size = getsizeof(0)  # estimate sizeof object without __sizeof__
+    def __init__(self, source={}):
+      """
+      Overloaded constructor
+      """
+      GraphTranslator.__init__(self, source)
 
-def sizeof(o):
-  if id(o) in seen:  # do not double count the same object
-    return 0
-  seen.add(id(o))
-  s = getsizeof(o, default_size)
+      self.split_options = []
 
-  if verbose:
-    print(s, type(o), repr(o), file=stderr)
-
-  for typ, handler in all_handlers.items():
-    if isinstance(o, typ):
-      s += sum(map(sizeof, handler(o)))
-      break
-  return s
-
-return sizeof(o)"""
-
-
-class OprSplit(tg.GraphTranslator):
-
-    def __init__(self, graph, params={}):
+    '''def __init__(self, graph, params={}):
         super().__init__(graph)
         self.label = "Operation Splitting Optimiser"
         self.description = "Optimiser which splits large tensor operations" \
@@ -99,9 +82,6 @@ class OprSplit(tg.GraphTranslator):
                            "memory requirement of the model."
         self.summary = ""
         self.split_options = []
-
-        self.supported_conv_ops = ['Conv2D', 'DepthwiseConv2D']
-        self.supported_pool_ops = ['MaxPool', 'MinPool', 'AvgPool']
 
         # set default parameters and update with given parameters
         self.tensor_allocator = heap_opt.HeapAllocateGraph
@@ -124,7 +104,7 @@ class OprSplit(tg.GraphTranslator):
         print("Starting op split optimisation. output-debug is [%s]" %
               self.output_debug)
 
-        self.find_split_options()
+        self.find_split_options()'''
 
     def split_possible(self, op_1):
 
@@ -134,7 +114,7 @@ class OprSplit(tg.GraphTranslator):
         op_2 = op_1.outputs[0].dependent_ops[0]
 
         # check op types
-        kernel_ops = self.supported_conv_ops + self.supported_pool_ops
+        kernel_ops = self.SUPPORTED_CONV_OPS + self.SUPPORTED_POOL_OPS
         if op_1.type not in kernel_ops or op_2.type not in kernel_ops:
             return False
 
@@ -206,12 +186,12 @@ class OprSplit(tg.GraphTranslator):
             else:
                 op_dilation_factor = 1
 
-        # If this is a pooling op then use the filter size parameters
-        if opr.type in self.supported_pool_ops:
+        # If this is a pooling op then use the kernel size parameters
+        if opr.type in self.SUPPORTED_POOL_OPS:
             if split_dim == 1:
-                filter_size = opr.params['filter_height']
+                filter_size = opr.params['kernel_height']
             else:
-                filter_size = opr.params['filter_width']
+                filter_size = opr.params['kernel_width']
         else:  # if it's a convolution of any sort use the filter input
             filter_size = opr.inputs[1].shape[split_dim]
 
@@ -258,7 +238,6 @@ class OprSplit(tg.GraphTranslator):
         else:
             return 1
 
-    # @staticmethod
     def split_ops(self, graph, opr, n_splits):
 
         input_tensor = opr.inputs[0]
@@ -272,7 +251,7 @@ class OprSplit(tg.GraphTranslator):
 
         # split the output of opr_2 on the largest of its spatial dimensions
         opr_2_output = opr_2.outputs[0]
-        split_dim = OprSplit.get_split_dim(opr_2_output.shape)
+        split_dim = self.get_split_dim(opr_2_output.shape)
 
         opr_2_split_dim = opr_2_output.shape[split_dim]
         # if opr_2_output.shape[2] > opr_2_output.shape[1]:
@@ -283,13 +262,13 @@ class OprSplit(tg.GraphTranslator):
         # sub-tensors of the input and output
         opr_rec_size = self.get_receptive_file_size(opr, split_dim)
         opr_padding = self.get_left_right_padding(opr, split_dim)
-        opr_stride = OprSplit.get_stride(opr, split_dim)
+        opr_stride = self.get_stride(opr, split_dim)
         opr_2_rec_size = self.get_receptive_file_size(opr_2, split_dim)
         opr_2_padding = self.get_left_right_padding(opr_2, split_dim)
-        opr_2_stride = OprSplit.get_stride(opr_2, split_dim)
+        opr_2_stride = self.get_stride(opr_2, split_dim)
         input_split_sizes = []
         int_split_sizes = []
-        output_split_sizes = OprSplit.calc_split_sizes(opr_2_split_dim,
+        output_split_sizes = self.calc_split_sizes(opr_2_split_dim,
                                                        n_splits)
         for i, spit_size in enumerate(output_split_sizes):
             # compute the size of each intermediate tensor in the split dim
@@ -315,7 +294,7 @@ class OprSplit(tg.GraphTranslator):
         # increase sequence indices of operations following these two ops
         # so that the new operations within the parallel chains can
         # be ordered correctly
-        OprSplit.increase_sequence_indices(
+        self.increase_sequence_indices(
           graph,
           output_tensor.dependent_ops[0].sequence_index,
           (n_splits - 1) * 2
@@ -449,12 +428,12 @@ class OprSplit(tg.GraphTranslator):
         """
         opr_2 = split_op.outputs[0].dependent_ops[0]
         opr_2_output = opr_2.outputs[0]
-        split_dim = OprSplit.get_split_dim(opr_2_output.shape)
+        split_dim = self.get_split_dim(opr_2_output.shape)
         int_tensor = split_op.outputs[0]
-        slice_element_count = (np.prod(int_tensor.shape) /
+        slice_element_count = (int_tensor.shape.get_element_count() /
                                int_tensor.shape[split_dim])
         receptive_field = self.get_receptive_file_size(opr_2, split_dim)
-        stride = OprSplit.get_stride(opr_2, split_dim)
+        stride = self.get_stride(opr_2, split_dim)
 
         recomputations = ((n_splits - 1) *
                           slice_element_count *
@@ -462,35 +441,45 @@ class OprSplit(tg.GraphTranslator):
         return recomputations
 
     def allocate_buffers(self, graph_to_alloc):
-        """
-        Function to allocate the intermediate buffers of this graph
-        either using the sequential optimiser if possible, falling back
-        to the provided allocation aglorithm if not.
-        :return: a clone of the graph with allocated intermediate buffers
-        """
-        # graph_to_alloc.sequence_ops()
+      """
+      Function to allocate the intermediate buffers of this graph
+      either using the sequential optimiser if possible, falling back
+      to the provided allocation aglorithm if not.
+      :return: a clone of the graph with allocated intermediate buffers
+      """
+      # graph_to_alloc.sequence_ops()
 
-        if self.attempt_sequential:
-            seq_opt = seq_alloc.SeqAllocateGraph(graph_to_alloc)
-            if seq_opt.graph_allocated:
-                return seq_opt.translate()
+      if self.parameters['AttemptSeq']:
+        # TODO need to rebuild sequential allocator as new graph_translator
+        pass
+        # seq_opt = seq_alloc.SeqAllocateGraph(graph_to_alloc)
+        # if seq_opt.graph_allocated:
+        #     return seq_opt.translate()
 
-        heap_opt = self.tensor_allocator(graph_to_alloc,
-                                         params=self.allocator_params)
-        return heap_opt.translate()
+      block_allocator = self.parameters['BlockAllocator']
+      block_alloc_params = self.parameters['BlockAllocatorParams']
+      allocated_graph = block_allocator.call(graph_to_alloc,
+                                             params=block_alloc_params,
+                                             inplace=False)
 
-    def find_split_options(self):
+      # heap_opt = self.tensor_allocator(graph_to_alloc,
+      #                                  params=self.allocator_params)
+      # return heap_opt.translate()
+      return allocated_graph
+
+    def operate(self, graph):
         """
         Method which finds the set of split options for this graph. updating the
         split_options list which contains the description of the split type
         memory saving, recomputation cost and optimised graph itself
         :return: None
         """
+        self.output_graph = self.allocate_buffers(graph)
         # initial allocation of tensors to work from
         # heap_opt = self.tensor_allocator(self.output_graph,
         #                                 params=self.allocator_params)
         # self.output_graph = heap_opt.translate()
-        self.output_graph = self.allocate_buffers(self.output_graph)
+        # self.output_graph = self.allocate_buffers(self.output_graph)
         # Add the non-optimised default option
         self.split_options.append(
           {'desc': 'original',
@@ -502,10 +491,10 @@ class OprSplit(tg.GraphTranslator):
            'op_splits': {}})
         test_graph_num = 0
 
-        if self.save_graphs:
-            graph_viz = graph_2_svg.SVGWriter(self.output_graph)
+        if self.parameters['SaveGraphs']:
+            graph_viz = SVGWriter(self.output_graph)
             graph_viz.write("test_graph_%02d.svg" % test_graph_num)
-            mem_viz = mem_2_svg.SVGMemoryWriter(self.output_graph)
+            mem_viz = SVGMemoryWriter(self.output_graph)
             mem_viz.write("test_mem_%02d.svg" % test_graph_num)
 
         print("This is test graph [%d]" % test_graph_num)
@@ -536,10 +525,10 @@ class OprSplit(tg.GraphTranslator):
                 # test_graph = allocator.translate(verbose=True)
                 test_graph = self.allocate_buffers(test_graph)
 
-                if self.save_graphs:
-                    graph_viz = graph_2_svg.SVGWriter(test_graph)
+                if self.parameters['SaveGraphs']:
+                    graph_viz = SVGWriter(test_graph)
                     graph_viz.write("test_graph_%02d.svg" % test_graph_num)
-                    mem_viz = mem_2_svg.SVGMemoryWriter(test_graph)
+                    mem_viz = SVGMemoryWriter(test_graph)
                     mem_viz.write("test_mem_%02d.svg" % test_graph_num)
 
                 print("This is test graph [%d]" % test_graph_num)
@@ -600,11 +589,11 @@ class OprSplit(tg.GraphTranslator):
                         test_graph = self.allocate_buffers(test_graph)
                         new_peak_mem = test_graph.get_peak_memory()
 
-                        if self.save_graphs:
-                            graph_viz = graph_2_svg.SVGWriter(test_graph)
+                        if self.parameters['SaveGraphs']:
+                            graph_viz = SVGWriter(test_graph)
                             graph_viz.write("test_graph_%02d.svg" %
                                             test_graph_num)
-                            mem_viz = mem_2_svg.SVGMemoryWriter(test_graph)
+                            mem_viz = SVGMemoryWriter(test_graph)
                             mem_viz.write("test_mem_%02d.svg" % test_graph_num)
 
                         print("This is test graph [%d]" % test_graph_num)
@@ -666,8 +655,4 @@ class OprSplit(tg.GraphTranslator):
 
         # set the output graph to the most optimised option found.
         self.output_graph = self.split_options[-1]['graph']
-
-    def translate(self, verbose=False):
-        if verbose:
-          print(self.summary)
-        return self.output_graph
+        # graph = self.output_graph

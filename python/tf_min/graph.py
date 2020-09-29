@@ -835,6 +835,7 @@ class Graph:
                   print("Error, cannot get peak_memory of a graph which "
                         "contains intermediate tensors that have not been "
                         "pre-allocated.")
+                  print("Tensor [%s] not allocated" % tensor.label)
                 return None
         return peak_memory
 
@@ -1024,7 +1025,7 @@ class Graph:
         element_count = 0
         for opr in self.ops:
             for output in opr.outputs:
-               element_count += np.prod(output.shape)
+               element_count += output.shape.get_element_count()
         return element_count
 
     @staticmethod

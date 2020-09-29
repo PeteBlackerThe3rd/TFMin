@@ -23,137 +23,66 @@
 
     ---------------------------------------------------------------------
 
-    HeapAllocator - simple heap allocation memory optimisation algorithm
-    this isn't a very good algorithm but is used to generate an upper bound
-    used when comparing other algorithms.
+    Heap memory optimiser. Memory pre-allocation algorithm which iterates
+    through the tensors to allocate either forwards or backwards and places
+    each tensor buffer into the lowest area of free space.
 """
-from tf_min.mem_opt.base_optimiser import BaseMemoryOptimiser
-from tf_min.mem_opt.memory_region import MemoryRegion
+import copy
+from ..graph import TenType, TenMetaType, Tensor, Operation, Graph
+from .memory_optimiser import MemoryOptimiser
 
 
-class HeapAllocator(BaseMemoryOptimiser):
+class HeapMemOpt(MemoryOptimiser):
+  """
+  Heap memory optimiser
+  """
 
-  def __init__(self,
-               op_list,
-               buffer_list,
-               alignment=4):
-    super(HeapAllocator, self).__init__(op_list,
-                                        buffer_list,
-                                        alignment=alignment)
-    self.img_count = 0
+  DEFAULT_PARAMS = {'Order': 'Backwards',
+                    'BatchSize': 1,
+                    'UseOverlaps': True}
+  TYPE = 'Heap'
+  DESCRIPTION = "Allocated intermediate tensors using a " \
+                "simple heap approach. Each tensor is places at the " \
+                "lowest offset in free memory in order."
 
-  @staticmethod
-  def name():
-    return "Heap Memory Allocator"
-
-  @staticmethod
-  def description():
-    return "A simple memory pre-allocation althorithm which " \
-           "uses a heap allocation strategy"
-
-  def heap_allocate_buffer(self, buffer):
+  def operate(self, graph):
     """
-    Add a single block to the allocated block pattern using
-     a heap allocation method. I.e. the first free space.
-    :param buffer: the buffer object to allocate
+    Sequence the provided graph either in place, or cloned and returned.
+    :param graph: tf_min.Graph object to operate on
     :return: None
     """
+    self.heap_allocate(graph)
 
-    # test if this operation can be inplace using the input buffers
-    # memory space
+  def heap_allocate(self, graph):
 
-    # create a list of all free regions of memory around the
-    # blocks currently allocated which overlap with this block
-    free_regions = [MemoryRegion(0, None)]
-    for b in self.buffer_list:
-      if b.allocated() and b.overlaps(buffer):
-        new_free_regions = []
-        block_region = MemoryRegion(b.offset, b.offset + b.size)
-        for region in free_regions:
-          new_free_regions += region.get_carve_result(block_region)
-        free_regions = new_free_regions
+      # prepare graph for memory pre-allocation
+      self.reset_memory_layout(graph)
+      self.populate_tensor_scopes(graph)
 
-    # add this block to the first region it fits into
-    new_block_region = MemoryRegion(0, buffer.size)
-    for region in free_regions:
-      if new_block_region.can_fit_inside(region):
-        buffer.offset = region.start
-        break
+      # create list of tensors to allocate in order
+      allocation_op_order = copy.copy(graph.op_sequence)
+      if self.parameters['Order'] == 'Backwards':
+        allocation_op_order.reverse()
 
-    filename = "allocation_step_%04d.png" % self.img_count
-    self.img_count += 1
-    self.save_memory_pattern(filename,
-                             buf_high=[
-                               self.get_buffer_idx_by_name(buffer.name)])
+      # iterate through the allocation order allocating all
+      # generated tensors which are unallocated
+      tensors_allocated = 0
+      for opr in allocation_op_order:
+        tensors_to_allocate = self.get_concrete_tensors(opr.outputs)
+        for tensor in tensors_to_allocate:
+          if not tensor.allocated():
+            offset = self.get_heap_allocated_offset(graph, tensor)
+            tensor.memory_offset = offset
+            tensors_allocated += 1
 
-  def merge_inplace_op_buffers(self):
-
-    # for each buffer who's final use op is inplace clobber safe merge
-    # it's first input and first output buffer into one.
-
-    print("")
-
-    merged = True
-    while merged:
-
-      merged = False
-
-      for buf in self.buffer_list:
-        op = self.op_list[buf.final_use]
-
-        print("Checking buffer [%s] with final use in [%s:%s]" %
-              (buf.name,
-               op._underlying_op.type,
-               op.name))
-
-        print("inplace [%s] output len %d" %
-              (op.inplace_clobber,
-               len(op.output_buffers)))
-
-        if op.inplace_clobber and op.output_buffers != []:
-
-          print("--- replacing buffer %s with %s" %
-                (op.output_buffers[0],
-                 op.input_buffers[0]))
-
-          # update final use index
-          buf.final_use = op.output_buffers[0].final_use
-
-          # swap all references to the old output to the new extended input
-          old_output_buffer = op.output_buffers[0]
-          self.swap_buffers_in_ops(old_output_buffer, op.input_buffers[0])
-
-          # remove old output buffer.
-          self.swap_buffers_in_ops(old_output_buffer, None)
-          self.buffer_list.remove(old_output_buffer)
-
-          merged = True
-          break
-
-      print("\n--Operation list after merging inplace clobbers--------")
-      for op in self.op_list:
-        print("%10s Operation [%s]:" % (op._underlying_op.type, op.name))
-        for input in op.input_buffers:
-          print("        -> Input buffer [%s]:" % input.name)
-        for output in op.output_buffers:
-          print("        <- Output buffer [%s]:" % output.name)
-      print("----------")
-
-  def optimise(self):
-    """
-    Overriden method to optimise buffer memory locations using a simple
-    heap based method.
-    :return:
-    """
-
-    # sort buffers and calculate buffer scopes
-    self.sort_and_update_buffer_scope()
-
-    self.merge_inplace_op_buffers()
-
-    # allocate buffers in order of creation using heap strategy
-    for buffer in self.buffer_list:
-      self.heap_allocate_buffer(buffer)
-
-    # return super(HeapAllocator, self).required_memory()
-    return self.required_memory()
+      self.summary = ("Completed Heap memory allocator\n"
+                      "Allocated %d of %d intermediate tensor buffers,"
+                      "taking %s bytes (%d KB)" %
+                      (tensors_allocated,
+                       graph.count_tensors_by_type(
+                         TenType.INTERMEDIATE,
+                         meta_type=[TenMetaType.SINGLE,
+                                    TenMetaType.SUPER]
+                       ),
+                       graph.get_peak_memory(),
+                       graph.get_peak_memory() / 1024))

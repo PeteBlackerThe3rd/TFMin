@@ -53,7 +53,7 @@ class SVGMemoryWriter:
       :param filename: name of te svg file to generate
       :return: True on success false otherwise
       """
-      memory_size = self.graph.get_peak_memory()
+      memory_size = self.graph.get_peak_memory(silent=False)
 
       plot_width = self.plot_width
       row_height = self.row_height
