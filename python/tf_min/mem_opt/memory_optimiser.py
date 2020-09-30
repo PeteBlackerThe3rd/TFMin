@@ -58,13 +58,13 @@ class MemoryOptimiser(GraphTranslator):
     """
     # reset offset and tensor buffer sizes
     for tensor in graph.tensors:
-      if (tensor.type == tg.TenType.INTERMEDIATE and
-              tensor.meta_type != TenMetaType.SUB):
+      if (tensor.type == tg.TenType.INTERMEDIATE):
         tensor.memory_offset = None
-        tensor.buffer_size = \
-            tensor.get_buffer_size(self.parameters['BatchSize'])
         tensor.creation_idx = None
         tensor.last_use_idx = None
+        if tensor.meta_type != TenMetaType.SUB:
+          tensor.buffer_size = \
+              tensor.get_buffer_size(self.parameters['BatchSize'])
 
   @staticmethod
   def scopes_overlap(tensor_a, tensor_b):
@@ -162,8 +162,14 @@ class MemoryOptimiser(GraphTranslator):
       for tensor in tensors:
           # if this output is a mapped sub-tensor then promote the
           # scope up-to the containing super-tensor
-          if tensor.meta_type == tg.TenMetaType.SUB:
+          if tensor.meta_type == TenMetaType.SUB:
               tensor = tensor.super_tensor
+              if tensor.meta_type != TenMetaType.SUPER:
+                print("#### ERROR super_tensor link isn't a super tensor!")
+          # Add all intermediate tensors to the list at most once
           if tensor.type == tg.TenType.INTERMEDIATE:
-            concrete_tensors.append(tensor)
+            if tensor not in concrete_tensors:
+              if tensor.meta_type == TenMetaType.SUB:
+                print(">>>> Error Sub tensor added by get_conc_tensors")
+              concrete_tensors.append(tensor)
       return concrete_tensors

@@ -47,11 +47,8 @@ class SVGMemoryWriter:
 
     def draw_memory_layout(self):
       """
-      Function to save the allocation buffer locations and their scopes to a
-      vector svg file. This includes labels of operation scopes and the
-      scale of the memory axis
-      :param filename: name of te svg file to generate
-      :return: True on success false otherwise
+      Function to wriate the allocation buffer locations and their scopes to
+      sn object in self.dwg
       """
       memory_size = self.graph.get_peak_memory(silent=False)
 
@@ -69,53 +66,55 @@ class SVGMemoryWriter:
       # draw zebra background
       for i in range(operation_count + 1):
         if (i % 2) == 0:
-          fill = svg.rgb(95 ,95 ,95 ,'%')
+          fill = svg.rgb(95, 95, 95, '%')
         else:
-          fill = svg.rgb(90 ,90 ,90 ,'%')
-        self.dwg.add(self.dwg.rect((20, plot_offset_y + i* row_height),
-                         (plot_width + plot_offset_x,
-                          row_height),
-                         fill=fill))
+          fill = svg.rgb(90, 90, 90, '%')
+        self.dwg.add(self.dwg.rect((20, plot_offset_y + i * row_height),
+                                   (plot_width + plot_offset_x, row_height),
+                                   fill=fill))
 
       # add operation labels
       for i, opr in enumerate(self.graph.ops):
         label = "[%s] %s" % (opr.type, opr.label)
         if len(label) > self.label_length_limit:
           label = "..." + label[-(self.label_length_limit - 3):]
-        self.dwg.add(self.dwg.text(label,
-                         insert=(40, plot_offset_y + ((i + 1) * row_height) - 5),
-                         fill='black'))
+        self.dwg.add(self.dwg.text(
+          label,
+          insert=(40, plot_offset_y + ((i + 1) * row_height) - 5),
+          fill='black'
+        ))
 
       # add axes and memory scale
       self.dwg.add(self.dwg.line((plot_offset_x - row_height,
-                      plot_offset_y - row_height),
-                     (plot_offset_x - row_height,
-                      plot_offset_y + row_height * (operation_count + 2)),
-                     stroke='black'))
+                                  plot_offset_y - row_height),
+                                 (plot_offset_x - row_height,
+                                  plot_offset_y + row_height *
+                                  (operation_count + 2)),
+                                 stroke='black'))
       self.dwg.add(self.dwg.line((plot_offset_x - row_height,
-                      plot_offset_y - row_height),
-                     (plot_offset_x + plot_width + row_height,
-                      plot_offset_y - row_height),
-                     stroke='black'))
+                                  plot_offset_y - row_height),
+                                 (plot_offset_x + plot_width + row_height,
+                                  plot_offset_y - row_height),
+                                 stroke='black'))
       self.dwg.add(self.dwg.line((plot_offset_x,
-                      plot_offset_y - row_height),
-                     (plot_offset_x,
-                      plot_offset_y - 2 * row_height),
-                     stroke='black'))
+                                  plot_offset_y - row_height),
+                                 (plot_offset_x,
+                                  plot_offset_y - 2 * row_height),
+                                 stroke='black'))
       self.dwg.add(self.dwg.line((plot_offset_x + plot_width,
-                        plot_offset_y - row_height),
-                       (plot_offset_x + plot_width,
-                        plot_offset_y - 2 * row_height),
-                       stroke='black'))
+                                  plot_offset_y - row_height),
+                                 (plot_offset_x + plot_width,
+                                  plot_offset_y - 2 * row_height),
+                                 stroke='black'))
 
       self.dwg.add(self.dwg.text('0 KB',
-                       insert=(plot_offset_x,
-                               plot_offset_y - 2 * row_height),
-                       fill='black'))
+                                 insert=(plot_offset_x,
+                                         plot_offset_y - 2 * row_height),
+                                 fill='black'))
       self.dwg.add(self.dwg.text('%d KB' % int(memory_size / 1024),
-                       insert=(plot_offset_x + plot_width,
-                               plot_offset_y - 2 * row_height),
-                       fill='black'))
+                                 insert=(plot_offset_x + plot_width,
+                                         plot_offset_y - 2 * row_height),
+                                 fill='black'))
 
       # draw allocated blocks
       for i, tensor in enumerate(self.graph.tensors):
@@ -136,10 +135,17 @@ class SVGMemoryWriter:
                                  tensor.highlight_color[2], '%')
 
           self.dwg.add(
-            self.dwg.rect((plot_offset_x + mem_start, plot_offset_y + op_start),
-                     (mem_width, op_range),
-                     fill=block_fill,
-                     stroke=block_stroke))
+            self.dwg.rect((plot_offset_x + mem_start,
+                           plot_offset_y + op_start),
+                          (mem_width, op_range),
+                          fill=block_fill,
+                          stroke=block_stroke))
+
+          self.dwg.add(
+            self.dwg.text(tensor.label + ":" + str(tensor.meta_type),
+                          insert=(plot_offset_x + mem_start + (row_height * 0.75),
+                                  plot_offset_y + op_start + (row_height * 0.5)),
+                          fill='black'))
 
     def write(self, filename):
       """

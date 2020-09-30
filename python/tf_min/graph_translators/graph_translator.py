@@ -73,6 +73,8 @@ class GraphTranslator:
       assert False, "Error cannot instantiate GraphTranslator from a " \
                     "\"%s\" type." % type(source)
 
+    self.output_graph = None
+
   @classmethod
   def get_type(cls):
       return cls.TYPE
@@ -153,16 +155,7 @@ class GraphTranslator:
           graph.tensors[idx].safe_overlap_preceding_tensor
         ))
         tensor.safe_overlap_preceding_tensor = \
-          cloned_graph.tensors[preceding_tensor_idx]
-
-      """if len(graph.tensors[idx].sub_tensors) > 0:
-          print("Cloning a tensor with %d sub tensors of type [%s] "
-                "(first sub tensor is [%s] idx [%s])" %
-                (len(graph.tensors[idx].sub_tensors),
-                 tensor.meta_type,
-                 graph.tensors[idx].sub_tensors[0],
-                 graph.get_tensor_idx(
-                  graph.tensors[idx].sub_tensors[0])))"""
+            cloned_graph.tensors[preceding_tensor_idx]
 
     # update internal references within new operations
     for idx, opr in enumerate(cloned_graph.ops):
@@ -202,13 +195,13 @@ class GraphTranslator:
     :return:
     """
     if inplace:
-        output_graph = input_graph
+        self.output_graph = input_graph
     else:
-        output_graph = self.clone(input_graph)
+        self.output_graph = self.clone(input_graph)
 
-    self.operate(output_graph)
+    self.operate(self.output_graph)
 
     if inplace:
         return
     else:
-        return output_graph
+        return self.output_graph

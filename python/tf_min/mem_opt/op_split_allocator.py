@@ -71,40 +71,7 @@ class OprSplitMemOpt(MemoryOptimiser):
       Overloaded constructor
       """
       GraphTranslator.__init__(self, source)
-
       self.split_options = []
-
-    '''def __init__(self, graph, params={}):
-        super().__init__(graph)
-        self.label = "Operation Splitting Optimiser"
-        self.description = "Optimiser which splits large tensor operations" \
-                           "into smaller parallel streams to reduce the peak " \
-                           "memory requirement of the model."
-        self.summary = ""
-        self.split_options = []
-
-        # set default parameters and update with given parameters
-        self.tensor_allocator = heap_opt.HeapAllocateGraph
-        self.allocator_params = {}
-        self.output_debug = False
-        self.save_graphs = True
-        self.attempt_sequential = True
-        if 'allocator' in params:
-            self.tensor_allocator = params['allocator']
-        if 'allocator-params' in params:
-            self.allocator_params = params['allocator-params']
-        if 'output-debug' in params:
-            self.output_debug = params['output-debug']
-        if 'save-graphs' in params:
-            self.save_graphs = params['save-graphs']
-        if 'attempt-seq' in params:
-            self.attempt_sequential = params['attempt-seq']
-        self.output_graph.clear_highlights()
-
-        print("Starting op split optimisation. output-debug is [%s]" %
-              self.output_debug)
-
-        self.find_split_options()'''
 
     def split_possible(self, op_1):
 
@@ -254,9 +221,6 @@ class OprSplitMemOpt(MemoryOptimiser):
         split_dim = self.get_split_dim(opr_2_output.shape)
 
         opr_2_split_dim = opr_2_output.shape[split_dim]
-        # if opr_2_output.shape[2] > opr_2_output.shape[1]:
-        #   split_dim = 2
-        #   opr_2_split_dim = opr_2_output.shape[2]
 
         # compute the size of each intermediate tensor and the
         # sub-tensors of the input and output
@@ -269,7 +233,7 @@ class OprSplitMemOpt(MemoryOptimiser):
         input_split_sizes = []
         int_split_sizes = []
         output_split_sizes = self.calc_split_sizes(opr_2_split_dim,
-                                                       n_splits)
+                                                   n_splits)
         for i, spit_size in enumerate(output_split_sizes):
             # compute the size of each intermediate tensor in the split dim
             int_size = (spit_size - 1) * opr_2_stride + opr_2_rec_size
@@ -458,9 +422,15 @@ class OprSplitMemOpt(MemoryOptimiser):
 
       block_allocator = self.parameters['BlockAllocator']
       block_alloc_params = self.parameters['BlockAllocatorParams']
-      allocated_graph = block_allocator.call(graph_to_alloc,
-                                             params=block_alloc_params,
-                                             inplace=False)
+      #allocated_graph = block_allocator.call(graph_to_alloc,
+      #                                       params=block_alloc_params,
+      #                                       inplace=False)
+
+      ba = block_allocator(source=block_alloc_params)
+      allocated_graph = ba(graph_to_alloc, inplace=False)
+      print("------\n%s" % ba.summary)
+      mem_test = allocated_graph.get_peak_memory()
+      print("Allocated graph peak mem [%s]\n----------------" % mem_test)
 
       # heap_opt = self.tensor_allocator(graph_to_alloc,
       #                                  params=self.allocator_params)
@@ -625,7 +595,7 @@ class OprSplitMemOpt(MemoryOptimiser):
             if not optimisation_found:
                 break
 
-        print("Found %d possible optimisaed graphs with split operations" %
+        print("Found %d possible optimised graphs with split operations" %
               (len(self.split_options)-1))
         print("op_level, desc 1, desc 2, peak mem, saving, "
               "saving %, re-computations, total re-computations, "
@@ -655,4 +625,3 @@ class OprSplitMemOpt(MemoryOptimiser):
 
         # set the output graph to the most optimised option found.
         self.output_graph = self.split_options[-1]['graph']
-        # graph = self.output_graph
