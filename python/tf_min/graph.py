@@ -839,6 +839,19 @@ class Graph:
                 return None
         return peak_memory
 
+    def get_weight_stats(self):
+        """
+        Method to return the number of constant weights in this model and
+        the number of bytes they take to store
+        :return: Tuple of weights count, weights bytes
+        """
+        weights_total = 0
+        weights_bytes_total = 0
+        for weight in self.get_constants():
+            weights_total += weight.shape.get_element_count()
+            weights_bytes_total += weight.get_buffer_size(batch_size=1)
+        return weights_total, weights_bytes_total
+
     def get_nth_operation_of_type(self, nth, op_type):
         """
         Method to return the nth operation of the given type in the sequence

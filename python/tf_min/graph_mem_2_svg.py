@@ -141,11 +141,12 @@ class SVGMemoryWriter:
                           fill=block_fill,
                           stroke=block_stroke))
 
-          self.dwg.add(
+          # disabled code to write the tensor label on each memory buffer block
+          '''self.dwg.add(
             self.dwg.text(tensor.label + ":" + str(tensor.meta_type),
                           insert=(plot_offset_x + mem_start + (row_height * 0.75),
                                   plot_offset_y + op_start + (row_height * 0.5)),
-                          fill='black'))
+                          fill='black'))'''
 
     def write(self, filename):
       """

@@ -71,7 +71,7 @@ class OprSplitMemOpt(MemoryOptimiser):
       Overloaded constructor
       """
       GraphTranslator.__init__(self, source)
-      self.split_options = []
+      self.split_options = None
 
     def split_possible(self, op_1):
 
@@ -422,9 +422,6 @@ class OprSplitMemOpt(MemoryOptimiser):
 
       block_allocator = self.parameters['BlockAllocator']
       block_alloc_params = self.parameters['BlockAllocatorParams']
-      #allocated_graph = block_allocator.call(graph_to_alloc,
-      #                                       params=block_alloc_params,
-      #                                       inplace=False)
 
       ba = block_allocator(source=block_alloc_params)
       allocated_graph = ba(graph_to_alloc, inplace=False)
@@ -451,14 +448,15 @@ class OprSplitMemOpt(MemoryOptimiser):
         # self.output_graph = heap_opt.translate()
         # self.output_graph = self.allocate_buffers(self.output_graph)
         # Add the non-optimised default option
-        self.split_options.append(
+        self.split_options = [
           {'desc': 'original',
            'peak_mem': self.output_graph.get_peak_memory(),
            'mem_saved': 0,
            'recomputations': 0,
            'recheck': self.output_graph.elements_computed(),
            'graph': self.clone(self.output_graph),
-           'op_splits': {}})
+           'op_splits': {}}
+        ]
         test_graph_num = 0
 
         if self.parameters['SaveGraphs']:

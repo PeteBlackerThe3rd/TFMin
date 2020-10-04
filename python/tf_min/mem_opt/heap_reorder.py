@@ -57,12 +57,6 @@ class HeapReorderMemOpt(MemoryOptimiser):
     :return: None
     """
 
-    sub_alloc_count = 0
-    for tensor in graph.tensors:
-      if (tensor.meta_type == TenMetaType.SUB and tensor.allocated()):
-        sub_alloc_count += 1
-    print("[[[[ Found %d allocated sub tensors at start ]]]]" % sub_alloc_count)
-
     # get the default tensor allocation order
     tensor_order = self.get_tensor_order_to_allocate(graph)
 
@@ -86,12 +80,6 @@ class HeapReorderMemOpt(MemoryOptimiser):
     new_order.append(new_order[best_idx])
     del new_order[best_idx]
     self.heap_allocate(graph, new_order)
-
-    sub_alloc_count = 0
-    for tensor in graph.tensors:
-      if (tensor.meta_type == TenMetaType.SUB and tensor.allocated()):
-        sub_alloc_count += 1
-    print("[[[[ Found %d allocated sub tensors at end ]]]]" % sub_alloc_count)
 
     self.summary = ("Completed Heap reorder memory allocator\n"
                     "Allocated %d intermediate tensor buffers,"
