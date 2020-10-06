@@ -52,7 +52,16 @@ BuiltinPipelines = {"GreedyHeap": """<tfmin>
     <FuseActivations />
     <RemoveReshapeOps />
   </pipeline>
-</tfmin>"""}
+</tfmin>
+""",
+                    "SimplifyTFGraphNoReshape": """<tfmin>
+  <pipeline>
+    <RemoveIdentityOps />
+    <FuseBiasAdds />
+    <FuseActivations />
+  </pipeline>
+</tfmin>
+"""}
 
 
 class Pipeline:

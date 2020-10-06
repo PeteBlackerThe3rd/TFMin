@@ -34,37 +34,42 @@ from .types import get_dtype_description
 
 class LatexWriter:
 
-  HEADER = '''\\begin{table}[h]
-\caption{<caption>}
-\label{<label>}
-\centering
-\\begin{tabular}{|c||c|c|c|}
-\hline
-\\bfseries Layer & \\bfseries Size & \\bfseries Data Type & 
-\\bfseries Details \\\\
-\hline\hline
+  HEADER = '''\\begin{{longtable}}{{| p{{ {0}\\textwidth}} | 
+p{{ {1}\\textwidth}} | p{{ {2}\\textwidth}} | p{{ {3}\\textwidth}} |}} 
+\\hline
+\\bfseries Layer & \\bfseries Output Size & \\bfseries Data Type & 
+\\bfseries Details \\\\ \\hline \\hline
 '''
 
-  FOOTER = '''\end{tabular}
-\end{table}
+  FOOTER = '''\caption{{ {0} }}
+\label{{ {1} }}
+\end{{longtable}}
 '''
+
+  ROW = '''{0} & {1} & {2} & {3} \\\\ \hline
+'''
+
+  DEFAULT_WIDTHS = [0.24, 0.14, 0.12, 0.36]
 
   def __init__(self, graph):
     self.graph = graph
 
-  def generate_latex(self, caption="TFMin model", label=""):
+  def generate_latex(self, caption="TFMin model", ref_label="", widths=None):
     """
     Function to convert the model graph as latex. Note this only works nicely
     with purely sequential graphs. It'll produce output from any graph,
     but it will be really messy if it's a highly connected graph!
-    :return: String, containing the a latex table containing a detailed
+    :return: String, containing the a latex table with a detailed
              description of the graph
     """
 
     self.graph.sequence_ops()
-    latex = LatexWriter.HEADER
-    latex = latex.replace("<caption>", caption)
-    latex = latex.replace("<label>", label)
+
+    if widths is None:
+      column_widths = self.DEFAULT_WIDTHS
+    else:
+      column_widths = widths
+    latex = self.HEADER.format(*tuple(column_widths))
 
     # Create one initial row for each input tensor
     inputs = self.graph.get_inputs()
@@ -73,25 +78,25 @@ class LatexWriter:
         label = "Input"
       else:
         label = "Input %d" % idx
-      latex += "%s & %s & %s & %s \\\\\n" % (
+      latex += self.ROW.format(
         label,
         input.shape,
         get_dtype_description(input.d_type),
         ""
       )
-      latex += '\hline\n'
+    latex += '\hline\n'
 
     # Create a row for each operation
     for opr in self.graph.ops:
       desc_lines = self.generate_opr_description(opr)
       description = self.make_table_multiline(desc_lines)
-      latex += "%s & %s & %s & %s \\\\\n" % (
+      latex += self.ROW.format(
         opr.type,
         opr.outputs[0].shape,
         get_dtype_description(opr.outputs[0].d_type),
         description
       )
-      latex += '\hline\n'
+    latex += '\hline\n'
 
     # Create a final row for each output tensor
     outputs = self.graph.get_outputs()
@@ -100,15 +105,14 @@ class LatexWriter:
         label = "Output"
       else:
         label = "Output %d" % idx
-      latex += "%s & %s & %s & %s \\\\\n" % (
+      latex += self.ROW.format(
         label,
         output.shape,
         get_dtype_description(output.d_type),
         ""
       )
-      latex += '\hline\n'
 
-    latex += LatexWriter.FOOTER
+    latex += self.FOOTER.format(caption, ref_label)
 
     return latex
 
@@ -117,8 +121,6 @@ class LatexWriter:
     description = []
     if opr.type in ["Conv2D", "TransposedConv2D"]:
       description.append("Filter shape %s" % opr.inputs[1].shape[1:])
-      if len(opr.inputs) > 2:
-        description.append("Biases used.")
       description.append("Padding: %s" % opr.params['padding'])
       description.append("Stride: [%d %d]" % (opr.params['stride_width'],
                                               opr.params['stride_height']))
@@ -132,6 +134,8 @@ class LatexWriter:
               opr.params['fused_activation_fn'] is not None):
         description.append('Activation fn: %s' %
                            opr.params['fused_activation_fn'])
+      if len(opr.inputs) > 2:
+        description.append("Bias added.")
     if opr.type in ["MaxPool", 'MinPool', 'AvgPool']:
       description.append('Stride: [%d %d]' % (opr.params['stride_width'],
                                               opr.params['stride_height']))
@@ -139,14 +143,14 @@ class LatexWriter:
       description.append('Kernel size: [%d %d]' % (opr.params['kernel_width'],
                                                    opr.params['kernel_height']))
     if opr.type == "MatMul":
-      if len(opr.inputs) > 2:
-        description.append("Biases used.")
+      description.append('Weights %s' % opr.inputs[1].shape)
       if ('fused_activation_fn' in opr.params and
               opr.params['fused_activation_fn'] is not None):
         description.append('Activation fn: %s' %
                            opr.params['fused_activation_fn'])
+      if len(opr.inputs) > 2:
+        description.append("Bias added.")
     return description
-
 
   @staticmethod
   def make_table_multiline(lines):

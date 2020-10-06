@@ -25,6 +25,9 @@ from .graph_2_svg import SVGWriter
 from .graph_mem_2_svg import SVGMemoryWriter
 from .graph_2_latex import LatexWriter
 
+# import Pipeline container class
+from .pipeline import Pipeline
+
 # import singular function modules
 from .graph_from_tf import graph_from_tf_sess
 from .graph_add_safe_overlaps import add_safe_overlaps_to_graph

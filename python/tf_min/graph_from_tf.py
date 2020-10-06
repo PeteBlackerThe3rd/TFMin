@@ -180,6 +180,8 @@ def is_tensor_const(tf_tensor, sess):
   Function which checks if this tensor does not depend on any input tensors,
   i.e. it only depends on Const or Variable tensors and can be precalculated.
   :param tf_tensor: tf.Tensor object to check
+  :param sess: tf.Session object used to resolve is parent operations are
+               constants.
   :return: True if this tensor has a constant value
   """
 
@@ -338,13 +340,16 @@ def reshape_filter_tensors(graph):
     tensor.shape = tg.TensorShape(new_shape)
 
 
-def graph_from_tf_sess(sess, outputs):
+def graph_from_tf_sess(sess, outputs, verbose=False, pipeline=None):
     """
     method to populate this grah from the given session and list of output
     tensors
     :param sess: TF interactive session which includes the source flow graph
     :param outputs: list of output tensors (either string of their
                     name or objects)
+    :param verbose: boolean, if true a summary of the import and
+                    graph_simplification conducted
+    :param pipeline: None or tf_min.Pipeline to use for graph simplication.
     :return: True on success, False on failure
     """
     new_graph = tg.Graph()
@@ -382,8 +387,11 @@ def graph_from_tf_sess(sess, outputs):
     mark_weights(new_graph, sess)
 
     # simplify graph by removing and merging operations
-    pipeline = Pipeline(builtin="SimplifyTFGraph")
+    if pipeline is None:
+      pipeline = Pipeline(builtin="SimplifyTFGraph")
     pipeline(new_graph, inplace=True)
-    # print(pipeline.summary())
+
+    if verbose:
+      print(pipeline.summary())
 
     return new_graph
