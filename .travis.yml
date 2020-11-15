@@ -35,8 +35,8 @@
   #  - TF_VERSION=1.14.0
 install:
   # install Eigen v 3.3.x
-  - git clone --single-branch --branch branches/3.3  https://github.com/eigenteam/eigen-git-mirror.git eigen
-  - export CPLUS_INCLUDE_PATH=$CPLUS_INCLUDE_PATH:$PWD/eigen
+  # - git clone --single-branch --branch branches/3.3  https://github.com/eigenteam/eigen-git-mirror.git eigen
+  # - export CPLUS_INCLUDE_PATH=$CPLUS_INCLUDE_PATH:$PWD/eigen
   # install general dependecies
   - pip install 'numpy>=1.16.0'
   - pip install matplotlib scipy
@@ -49,13 +49,13 @@ install:
 before_script:
   # setup environment variables so TFMin is installed
   - export PYTHONPATH=$PYTHONPATH:$(pwd)/TFMin
-  - export CPLUS_INCLUDE_PATH=$CPLUS_INCLUDE_PATH:$(pwd)/cpp
+  # - export CPLUS_INCLUDE_PATH=$CPLUS_INCLUDE_PATH:$(pwd)/cpp
 script:
   - |
     if [ $TEST_SUITE == "examples" ]; then
       # first run all pytests in this repo (runs example exports and
       # python unit tests)
-      pytest pytest_tests/examples/
+      pytest tests/examples/
       # test build all example projects
       make -C examples/mnist_dense/cpp_project/
       make -C examples/mnist_conv/cpp_project/
@@ -70,5 +70,5 @@ script:
       ./examples/simple_rnn/cpp_project/native_test
     fi
   - if [ $TEST_SUITE == "op_kernels" ]; then
-      pytest pytest_tests/op_kernels/;
+      pytest tests/op_kernels/;
     fi

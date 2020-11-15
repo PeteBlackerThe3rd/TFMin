@@ -23,6 +23,9 @@
 # ignore test binaries
 **/bin
 
+# ignore local plan doc
+*release plan.txt
+
 # ingore all temporary directories wherever they are
 **/tmp
 
