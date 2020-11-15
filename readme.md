@@ -20,8 +20,9 @@ is trained using TensorFlow python then exported to c++ and built into a native 
 This open source software has been developed during my PhD research at the Surrey Space 
 Centre, at Surrey University and made possible by support from Airbus.
 
-![](logos/university-of-surrey-logo.png)
 ![](logos/airbus-ds-logo.png)
+![](logos/ssc-logo.png)
+![](logos/university-of-surrey-logo.png)
 
 ## Installation Instructions
 
@@ -38,7 +39,7 @@ This software is (c) 2019 Pete Blacker, Surrey Space Centre & Airbus Defence and
 A commercial extenstion to the TFMin tool is available from Airbus, which has full support for
 the LEON family of radiation hardened processors. This includes tensor operations  optimised 
 for these processors and V&V assurance to industry standards. For further information about 
-features and licencing please contact someone@Airbus.com.
+features and licencing please contact: ilke.karsli@airbus.com, arthur.scharf@airbus.com or carlos.hervasgarcia@airbus.com
 
 ## Publications
 
