@@ -83,7 +83,7 @@ class Pipeline:
     self.code_gen = None
 
     assert not(filename is not None and builtin is not None), \
-      "Error: Cannot provide both and XML filename and builtin " \
+      "Error: Cannot provide both an XML filename and builtin " \
       "constant when creating a Pipeline object."
 
     if filename is not None:
@@ -107,8 +107,8 @@ class Pipeline:
     else:
       output_graph = input_graph.clone()
 
-    for tg in self.pipeline:
-      tg(output_graph, inplace=True)
+    for step in self.pipeline:
+      step(output_graph, inplace=True)
 
     if inplace:
       return
@@ -122,6 +122,14 @@ class Pipeline:
   def __getitem__(self, index):
     """ Return the given index or range from the pipeline """
     return self.pipeline[index]
+
+  def __str__(self):
+    """
+    Same as summary method, returns a multiline human readable
+    summary of this pipeline
+    :return: String
+    """
+    return self.summary()
 
   def validate(self):
     """
