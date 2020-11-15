@@ -32,9 +32,10 @@ import xml.dom.minidom as xmldom
 import copy
 import numpy as np
 import operator
-from tf_min.graph_translators.graph_translator import GraphTranslator
-from tf_min.graph_translators import *
+from .graph_translators.graph_translator import GraphTranslator
+from .graph_translators import *
 import tf_min.graph as tfm_g
+from .exceptions import TFMinInvalidObject
 
 
 # predefined graph translation pipelines defining some of the useful
@@ -65,165 +66,197 @@ BuiltinPipelines = {"GreedyHeap": """<tfmin>
 
 
 class Pipeline:
+  """
+  The Graph Translation Pipeline object, this includes a sequence of
+  graph translators and their paraemeters.
+  """
+
+  def __init__(self, filename=None, builtin=None):
     """
-    The Graph Translation Pipeline object, this includes a sequence of
-    graph translators and their paraemeters.
+    Creates a graph translation pipeline. Either blank of from the
+    given XML file, or builtin constant.
+    :param filename: String, name of a pipeline XML file to load
+    :param builtin: String, Key into BuiltinPipelines defining a
+                    builtin pipeline to instantiate.
     """
+    self.pipeline = []
+    self.code_gen = None
 
-    def __init__(self, filename=None, builtin=None):
-        """
-        Creates a graph translation pipeline. Either blank of from the
-        given XML file, or builtin constant.
-        :param filename: String, name of a pipeline XML file to load
-        :param builtin: String, Key into BuiltinPipelines defining a
-                        builtin pipeline to instantiate.
-        """
-        self.pipeline = []
-        self.code_gen = None
+    assert not(filename is not None and builtin is not None), \
+      "Error: Cannot provide both and XML filename and builtin " \
+      "constant when creating a Pipeline object."
 
-        assert not(filename is not None and builtin is not None), \
-            "Error: Cannot provide both and XML filename and builtin " \
-            "constant when creating a Pipeline object."
+    if filename is not None:
+      self.load_xml(filename)
 
-        if filename is not None:
-            self.load_xml(filename)
+    if builtin is not None:
+      assert builtin in BuiltinPipelines.keys(), \
+        "Error: Builtin pipeline given \"%s\" not found." % builtin
+      self.from_xml(BuiltinPipelines[builtin])
 
-        if builtin is not None:
-            assert builtin in BuiltinPipelines.keys(), \
-                "Error: Builtin pipeline given \"%s\" not found." % builtin
-            self.from_xml(BuiltinPipelines[builtin])
+  def __call__(self, input_graph, inplace=True):
+    """
+    Execute this pipeline on the given graph, either on a clone of the graph
+    or inplace.
+    :param input_graph: TFMin.Graph model
+    :param inplace: Boolean
+    :return:
+    """
+    if inplace:
+      output_graph = input_graph
+    else:
+      output_graph = input_graph.clone()
 
-    def __call__(self, input_graph, inplace=True):
-      """
-      Execute this pipeline on the given graph, either on a clone of the graph
-      or inplace.
-      :param input_graph: TFMin.Graph model
-      :param inplace: Boolean
-      :return:
-      """
-      if inplace:
-        output_graph = input_graph
-      else:
-        output_graph = input_graph.clone()
+    for tg in self.pipeline:
+      tg(output_graph, inplace=True)
 
-      for tg in self.pipeline:
-        tg(output_graph, inplace=True)
+    if inplace:
+      return
+    else:
+      return output_graph
 
-      if inplace:
-        return
-      else:
-        return output_graph
+  def __len__(self):
+    """ return the number of steps in this pipeline """
+    return len(self.pipeline)
 
-    def load_xml_file(self, filename):
-        """
-        Method to clear this pipeline and load a new one from the given
-        XML file.
-        :param filename: String, name of the XML file to load
-        :return: None
-        """
-        self.from_xml(open(filename, 'r').read())
+  def __getitem__(self, index):
+    """ Return the given index or range from the pipeline """
+    return self.pipeline[index]
 
-    def from_xml(self, xml_str):
-      """
-      Method to clear this pipeline and read a new one from the given XML
-      string
-      :param xml_str: XML content to load
-      :return:
-      """
-      doc = xmldom.parseString(xml_str)
+  def validate(self):
+    """
+    Validates that this pipeline object and all objects
+    it contains are structurally valid.
+    :Raises TFMinInvalidObject: If object is not valid
+    """
+    # check pipeline is a list and contains only GraphTranslator or derived
+    # objects
+    if not isinstance(self.pipeline, list):
+      raise TFMinInvalidObject("Invalid Pipeline object: pipeline "
+                               "attribute is not a list")
+    for idx, step in enumerate(self.pipeline):
+      if not isinstance(step, GraphTranslator):
+        raise TFMinInvalidObject("Invalid Pipeline object: pipeline step %d"
+                                 "is not on object derived from Graph "
+                                 "Translator" % idx)
 
-      # get and verify base element
-      base_node = doc.documentElement
-      # print(doc.documentElement.childNodes)
-      if base_node.tagName != "tfmin":
-          print("base nodename [%s]" % base_node.tagName)
-          print("type [%s]" % type(base_node.tagName))
-          raise IOError("Error reading pipeline XML file, document "
-                        "element is not a tfmin element.")
+    # check that the code_gen attribute is either None or a dictionary
+    # containing only valid keys and values
+    if (self.code_gen is not None and
+            not isinstance(self.code_gen, dict)):
+      raise TFMinInvalidObject("Invalide Pipeline object: code_gen attribute"
+                               " is neither None or a Dictinary")
 
-      # get and verify pipeline element
-      pipeline_ele = None
-      for child_node in base_node.childNodes:
-          if (isinstance(child_node, xmldom.Element) and
-                  child_node.tagName == "pipeline"):
-              pipeline_ele = child_node
-      if pipeline_ele is None:
-          raise IOError("Error reading pipeline XML file, no pipeline "
-                        "element found.")
+  def load_xml_file(self, filename):
+    """
+    Method to clear this pipeline and load a new one from the given
+    XML file.
+    :param filename: String, name of the XML file to load
+    :return: None
+    """
+    self.from_xml(open(filename, 'r').read())
 
-      # generate graph translators for each step of the pipeline
-      self.pipeline = []
-      for step in pipeline_ele.childNodes:
-          if isinstance(step, xmldom.Element):
-              gt = self.get_graph_translator_from_name(step.nodeName)
-              assert gt is not None, \
-                  "Error reading pipeline XML file unrecognized " \
-                  "Graph Translator \"%s\"" % step.nodeName
-              self.pipeline.append(gt(step))
+  def from_xml(self, xml_str):
+    """
+    Method to clear this pipeline and read a new one from the given XML
+    string
+    :param xml_str: XML content to load
+    :return:
+    """
+    doc = xmldom.parseString(xml_str)
 
-      # if a valid code_gen node exists then load it
-      for ele in base_node.childNodes:
-          if isinstance(ele, xmldom.Element) and ele.tagName == "code_gen":
-              self.code_gen = dict(ele.attributes.items())
-              assert "name_prefix" in self.code_gen, \
-                  "Error reading pipeline XML, no name_prefix attribute in " \
-                  "code_gen element "
+    # get and verify base element
+    base_node = doc.documentElement
+    # print(doc.documentElement.childNodes)
+    if base_node.tagName != "tfmin":
+        print("base nodename [%s]" % base_node.tagName)
+        print("type [%s]" % type(base_node.tagName))
+        raise IOError("Error reading pipeline XML file, document "
+                      "element is not a tfmin element.")
 
-    def save_xml(self, filename):
-        """
-        Method to write this pipeline to an XML file
-        :param filename: String, name of XML file to create
-        :return: None
-        """
-        doc = xmldom.Document()
-        tfmin_ele = doc.createElement("tfmin")
+    # get and verify pipeline element
+    pipeline_ele = None
+    for child_node in base_node.childNodes:
+        if (isinstance(child_node, xmldom.Element) and
+                child_node.tagName == "pipeline"):
+            pipeline_ele = child_node
+    if pipeline_ele is None:
+        raise IOError("Error reading pipeline XML file, no pipeline "
+                      "element found.")
 
-        for step in self.pipeline:
-            tfmin_ele.appendChild(step.to_xml(doc))
-        if self.code_gen is not None:
-            code_gen_ele = doc.createElement("code_gen")
-            for key, value in self.code_gen.items():
-                code_gen_ele.setAttribute(key, value)
-            tfmin_ele.appendChild(code_gen_ele)
+    # generate graph translators for each step of the pipeline
+    self.pipeline = []
+    for step in pipeline_ele.childNodes:
+        if isinstance(step, xmldom.Element):
+            gt = self.get_graph_translator_from_name(step.nodeName)
+            assert gt is not None, \
+                "Error reading pipeline XML file unrecognized " \
+                "Graph Translator \"%s\"" % step.nodeName
+            self.pipeline.append(gt(step))
 
-        doc.appendChild(tfmin_ele)
-        doc.writexml(filename)
+    # if a valid code_gen node exists then load it
+    for ele in base_node.childNodes:
+        if isinstance(ele, xmldom.Element) and ele.tagName == "code_gen":
+            self.code_gen = dict(ele.attributes.items())
+            assert "name_prefix" in self.code_gen, \
+                "Error reading pipeline XML, no name_prefix attribute in " \
+                "code_gen element "
 
-    def summary(self):
-        """
-        Method to generate a text summary of this pipeline
-        :return: String
-        """
-        summary = "========\n"
-        summary += "Graph Translation Pipeline with %d steps.\n" % \
-            len(self.pipeline)
-        summary += "========\n"
-        for step in self.pipeline:
-            summary += "%s\n%s\n" % (step.get_type(),
-                                     step.DESCRIPTION)
-            for key, value in step.parameters.items():
-                summary += "[%s] %s\n" % (key, value)
-            if step.summary != "":
-                summary += "----\n%s\n" % step.summary
-            summary += "========\n"
-        if self.code_gen is not None:
-            summary += "Code generation defined with parameters:\n"
-            for key, value in self.code_gen.items():
-                summary += "[%s] %s\n" % (key, value)
-            summary += "========\n"
-        return summary
+  def save_xml(self, filename):
+    """
+    Method to write this pipeline to an XML file
+    :param filename: String, name of XML file to create
+    :return: None
+    """
+    doc = xmldom.Document()
+    tfmin_ele = doc.createElement("tfmin")
 
-    @staticmethod
-    def get_graph_translator_from_name(name):
-        """
-        Search through all descendants of the GraphTranslator object
-        looking for one with a name which matches 'name'
-        :param name: String, the name of GraphTranslator to search for
-        :return: None of not found or the class type of the GraphTranslator
-                 if found.
-        """
-        for gt in GraphTranslator.__subclasses__():
-            if gt.TYPE == name:
-              return gt
+    for step in self.pipeline:
+      tfmin_ele.appendChild(step.to_xml(doc))
+    if self.code_gen is not None:
+      code_gen_ele = doc.createElement("code_gen")
+      for key, value in self.code_gen.items():
+        code_gen_ele.setAttribute(key, value)
+      tfmin_ele.appendChild(code_gen_ele)
 
-        return None
+    doc.appendChild(tfmin_ele)
+    doc.writexml(filename)
+
+  def summary(self):
+    """
+    Method to generate a text summary of this pipeline
+    :return: String
+    """
+    summary = "========\n"
+    summary += "Graph Translation Pipeline with %d steps.\n" % \
+               len(self.pipeline)
+    summary += "========\n"
+    for step in self.pipeline:
+      summary += "%s\n%s\n" % (step.get_type(),
+                               step.DESCRIPTION)
+      for key, value in step.parameters.items():
+        summary += "[%s] %s\n" % (key, value)
+      if step.summary != "":
+        summary += "----\n%s\n" % step.summary
+      summary += "========\n"
+    if self.code_gen is not None:
+      summary += "Code generation defined with parameters:\n"
+      for key, value in self.code_gen.items():
+        summary += "[%s] %s\n" % (key, value)
+      summary += "========\n"
+    return summary
+
+  @staticmethod
+  def get_graph_translator_from_name(name):
+    """
+    Search through all descendants of the GraphTranslator object
+    looking for one with a name which matches 'name'
+    :param name: String, the name of GraphTranslator to search for
+    :return: None of not found or the class type of the GraphTranslator
+             if found.
+    """
+    for gt in GraphTranslator.__subclasses__():
+      if gt.TYPE == name:
+        return gt
+
+    return None
