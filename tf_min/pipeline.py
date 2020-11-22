@@ -32,9 +32,11 @@ import xml.dom.minidom as xmldom
 import copy
 import numpy as np
 import operator
+
 from .graph_translators.graph_translator import GraphTranslator
 from .graph_translators import *
-import tf_min.graph as tfm_g
+from .mem_opt import *
+# import tf_min.graph as tfm_g
 from .exceptions import TFMinInvalidObject
 
 
@@ -83,8 +85,8 @@ class Pipeline:
     self.code_gen = None
 
     assert not(filename is not None and builtin is not None), \
-      "Error: Cannot provide both an XML filename and builtin " \
-      "constant when creating a Pipeline object."
+        "Error: Cannot provide both an XML filename and builtin " \
+        "constant when creating a Pipeline object."
 
     if filename is not None:
       self.load_xml(filename)
@@ -109,6 +111,10 @@ class Pipeline:
 
     for step in self.pipeline:
       step(output_graph, inplace=True)
+
+    # TODO add final code generation step if present
+    if self.code_gen is not None:
+      pass
 
     if inplace:
       return
@@ -149,11 +155,16 @@ class Pipeline:
                                  "Translator" % idx)
 
     # check that the code_gen attribute is either None or a dictionary
-    # containing only valid keys and values
     if (self.code_gen is not None and
             not isinstance(self.code_gen, dict)):
       raise TFMinInvalidObject("Invalide Pipeline object: code_gen attribute"
                                " is neither None or a Dictinary")
+
+    # if the code_gen attribute was a dictionary check it only contains
+    # valid keys with string values
+    if self.code_gen is not None:
+      # TODO
+      pass
 
   def load_xml_file(self, filename):
     """
@@ -255,15 +266,28 @@ class Pipeline:
     return summary
 
   @staticmethod
-  def get_graph_translator_from_name(name):
+  def get_graph_translator_from_name(name, base=None):
     """
-    Search through all descendants of the GraphTranslator object
+    Reccursively search through all descendants of the GraphTranslator class
     looking for one with a name which matches 'name'
     :param name: String, the name of GraphTranslator to search for
+    :param base: Class, the class to search for descendants of, this
+                 is used to make this method recurrsive.
     :return: None of not found or the class type of the GraphTranslator
              if found.
     """
-    for gt in GraphTranslator.__subclasses__():
+    if base is None:
+      base = GraphTranslator
+
+    for gt in base.__subclasses__():
+
+      # search for this graph translator name in subclasses of this class
+      found_gt = Pipeline.get_graph_translator_from_name(name, gt)
+      if found_gt is not None:
+        return found_gt
+
+      # if this graph translator name was not found then check if this
+      # class matches
       if gt.TYPE == name:
         return gt
 

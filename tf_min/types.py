@@ -44,29 +44,48 @@ class TenDType(Enum):
     UINT8 = 11
 
 
-def np_to_tfmin(np_type):
+NP_CONVERSION = {np.float32: TenDType.FLOAT32,
+                 np.float64: TenDType.FLOAT64,
+                 np.int8: TenDType.INT8,
+                 np.int16: TenDType.INT16,
+                 np.int32: TenDType.INT32,
+                 np.int64: TenDType.INT64,
+                 np.uint8: TenDType.UINT8,
+                 np.uint16: TenDType.UINT16,
+                 np.uint32: TenDType.UINT32,
+                 np.uint64: TenDType.UINT64,}
+
+def np_to_tfmin(src_type):
     """
     Function which converts a numpy data type to a TFMin data type
     :param np_type: numpy data type
     :return: TenDType
     """
-    conversion = {np.float32: TenDType.FLOAT32,
-                   np.float64: TenDType.FLOAT64,
-                   np.int8: TenDType.INT8,
-                   np.int16: TenDType.INT16,
-                   np.int32: TenDType.INT32,
-                   np.int64: TenDType.INT64,
-                   np.uint8: TenDType.UINT8,
-                   np.uint16: TenDType.UINT16,
-                   np.uint32: TenDType.UINT32,
-                   np.uint64: TenDType.UINT64,}
-    if not isinstance(np_type, np.dtype):
+    if not isinstance(src_type, np.dtype):
         raise TypeError("Error: np_to_tfmin, source type is not a numpy.dtype")
-    for key, value in conversion.items():
-        if key == np_type:
-            return value
+    #if np_type not in NP_CONVERSION.keys():
+    #  raise TypeError("Error: np_to_tfmin, source type not supported [%s]" % str(np_type))
+    for np_type, tm_type in NP_CONVERSION.items():
+      if src_type == np_type:
+        return tm_type
 
-    raise TypeError("numpy type [%s] not supported by TFMin" % np_type)
+    raise TypeError("Error: np_to_tfmin, source type not supported [%s]" % str(src_type))
+
+
+def tfmin_to_np(tfmin_type):
+    """
+    Function which converts a numpy data type to a TFMin data type
+    :param np_type: numpy data type
+    :return: TenDType
+    """
+    if not isinstance(tfmin_type, TenDType):
+        raise TypeError("Error: tfmin_to_np, source type is not a "
+                        "tf_min.TenDType")
+    if tfmin_type not in NP_CONVERSION.values():
+      raise TypeError("Error: tfmin_to_np, source type not supported")
+    for np_type, tm_type in NP_CONVERSION.items():
+      if tm_type == tfmin_type:
+        return np_type
 
 
 def get_dtype_size(d_type):

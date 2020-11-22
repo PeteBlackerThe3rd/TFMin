@@ -31,16 +31,13 @@
     converting a model trained with floating point calculations into a
     model using fixed point calculations.
 """
-
 import sys
 import numpy as np
 import math
 
 import tensorflow as tf
 from tensorflow.examples.tutorials.mnist import input_data
-
-from tf_min import exporter as tfm_ex
-import tf_min.progress_bar as pb
+from . import progress_bar as pb
 
 
 class BaseLayer:
@@ -50,7 +47,8 @@ class BaseLayer:
 
     def get_quantised_weights(self, input_radix_point, dtype, sess,
                               test_data_dict={}, fixed_radix=None):
-        print("Error calling get_quantised_weights on BaseLayer 'abstract' class!")
+        print("Error calling get_quantised_weights on BaseLayer "
+              "'abstract' class!")
         return {}
 
     @staticmethod
@@ -69,7 +67,7 @@ class BaseLayer:
 
     @staticmethod
     def variable_summaries(var):
-        """Attach a lot of summaries to a Tensor (for TensorBoard visualization)."""
+        """Attach  summaries to a Tensor (for TensorBoard visualization)."""
         with tf.name_scope('summaries'):
             mean = tf.reduce_mean(var)
             tf.summary.scalar('mean', mean)
@@ -90,13 +88,15 @@ class BaseLayer:
         elif dtype == tf.int32:
             bits = 32
         else:
-            print("Error unsupported type (%s) for Layer.optimal_radix" % str(type(dtype)))
+            print("Error unsupported type (%s) for Layer.optimal_radix" %
+                  str(type(dtype)))
             return 0
 
-        # Because the range of Two's compliment signed numbers is 1 smaller for negative
-        # values that it is for positive values we need to calculate the maximum radix shift
-        # for positive and negative values differently. Then we pick the smaller of the two,
-        # this way we garantee making the best use of the fixed point range
+        # Because the range of Two's compliment signed numbers is 1
+        # smaller for negative values that it is for positive values we need
+        # to calculate the maximum radix shift for positive and negative
+        # values differently. Then we pick the smaller of the two, this way
+        #  we garantee making the best use of the fixed point range
         negative_radix = math.log2(pow(2, bits-1)-1) - math.log2(abs(min_value))
         positive_radix = (bits-1) - math.log2(abs(max_value))
 
@@ -105,8 +105,9 @@ class BaseLayer:
     @staticmethod
     def get_quant(quant_settings, index):
         """
-            Shorthand method to get a particular layers quantified settings from a list,
-            or null if there are none (i.e. it's not a list at all)
+        Shorthand method to get a particular layers quantified
+        settings from a list, or null if there are none (i.e. it's
+        not a list at all)
 
         :param quant_settings: The list of settings or None
         :param index: Index of the layer requested
@@ -139,13 +140,16 @@ class BaseLayer:
                    str(dtype)))
 
             if not isinstance(l, BaseLayer):
-                print("Error in 'get_quantised_layer_weights' layer %d is not an object derived from BaseLayer!" % i)
+                print("Error in 'get_quantised_layer_weights' layer %d is not "
+                      "an object derived from BaseLayer!" % i)
 
-            quantised_layers += [l.get_quantised_weights(current_radix,
-                                                         dtype,
-                                                         sess,
-                                                         test_data_dict=test_data_dict,
-                                                         fixed_radix=fixed_radix)]
+            quantised_layers += [
+              l.get_quantised_weights(current_radix,
+                                      dtype,
+                                      sess,
+                                      test_data_dict=test_data_dict,
+                                      fixed_radix=fixed_radix)
+            ]
             current_radix = quantised_layers[-1]['RadixOutput']
 
         return quantised_layers
@@ -186,7 +190,8 @@ class DenseLayer(BaseLayer):
         print("Generating a dense layer, input[%d] output[%d] type[%s]" %
               (input_size, output_dim, str(dtype)))
 
-        if (dtype == tf.int8 or dtype == tf.int16 or dtype == tf.int32) and quant_settings is not None:
+        if ((dtype == tf.int8 or dtype == tf.int16 or dtype == tf.int32) and
+                quant_settings is not None):
 
             if dtype == tf.int8:
                 calc_type = tf.int32
@@ -207,14 +212,21 @@ class DenseLayer(BaseLayer):
             with tf.name_scope(layer_name):
                 # This Variable will hold the state of the weights for the layer
                 with tf.name_scope('weights'):
-                    self.weights = BaseLayer.weight_variable(initial=quant_settings['Weights'], dtype=dtype)
+                    self.weights = BaseLayer.weight_variable(
+                      initial=quant_settings['Weights'], dtype=dtype
+                    )
                 with tf.name_scope('biases'):
-                    self.biases = BaseLayer.bias_variable(initial=quant_settings['Biases'], dtype=dtype)
+                    self.biases = BaseLayer.bias_variable(
+                      initial=quant_settings['Biases'], dtype=dtype
+                    )
                 with tf.name_scope('Wx_plus_b'):
                     input_calc_type = tf.cast(input_tensor, dtype=calc_type)
-                    self.mat_mul = tf.matmul(tf.cast(input_calc_type, dtype=calc_type),
-                                             tf.cast(self.weights, dtype=calc_type))
-                    preactivate = tf.cast(tf.div(self.mat_mul, post_mm_div), dtype) + self.biases
+                    self.mat_mul = tf.matmul(tf.cast(input_calc_type,
+                                                     dtype=calc_type),
+                                             tf.cast(self.weights,
+                                                     dtype=calc_type))
+                    preactivate = tf.cast(tf.div(self.mat_mul, post_mm_div),
+                                          dtype) + self.biases
                 self.output = act(preactivate, name='activation')
 
         # if this is any other type build a regular float layer
@@ -222,10 +234,14 @@ class DenseLayer(BaseLayer):
             with tf.name_scope(layer_name):
                 # This Variable will hold the state of the weights for the layer
                 with tf.name_scope('weights'):
-                    self.weights = BaseLayer.weight_variable(shape=[input_size, output_dim], dtype=dtype)
+                    self.weights = BaseLayer.weight_variable(
+                      shape=[input_size, output_dim], dtype=dtype
+                    )
                     BaseLayer.variable_summaries(self.weights)
                 with tf.name_scope('biases'):
-                    self.biases = BaseLayer.bias_variable(shape=[output_dim], dtype=dtype)
+                    self.biases = BaseLayer.bias_variable(
+                      shape=[output_dim], dtype=dtype
+                    )
                     BaseLayer.variable_summaries(self.biases)
                 with tf.name_scope('Wx_plus_b'):
                     self.mat_mul = tf.matmul(input_tensor, self.weights)
@@ -234,40 +250,49 @@ class DenseLayer(BaseLayer):
                 self.output = act(preactivate, name='activation')
                 tf.summary.histogram('activations', self.output)
 
-    def get_quantised_weights(self, input_radix_point, dtype, sess, test_data_dict={}, fixed_radix=None):
+    def get_quantised_weights(self, input_radix_point, dtype, sess,
+                              test_data_dict={}, fixed_radix=None):
 
-        quant_weights = {'LayerType': self.layer_type, 'RadixIn': input_radix_point}
+        quant_weights = {'LayerType': self.layer_type,
+                         'RadixIn': input_radix_point}
 
         print("Quantising %s layer %s." % (self.layer_type, self.layer_name))
 
-        # the radix point of the weights for matrix multiplication is independant of the input radix point
+        # the radix point of the weights for matrix multiplication is
+        # independant of the input radix point
         matmul_weights = np.array(sess.run([self.weights]))
         matmul_weights = matmul_weights.reshape(matmul_weights.shape[1:])
 
         if fixed_radix is not None:
             quant_weights['RadixWeights'] = fixed_radix
         else:
-            quant_weights['RadixWeights'] = BaseLayer.optimal_radix(np.min(matmul_weights),
-                                                                    np.max(matmul_weights),
-                                                                    dtype)
+            quant_weights['RadixWeights'] = BaseLayer.optimal_radix(
+              np.min(matmul_weights),
+              np.max(matmul_weights),
+              dtype
+            )
 
         mm_min = np.min(matmul_weights)
         mm_max = np.max(matmul_weights)
 
-        scaled_weights = matmul_weights * math.pow(2, quant_weights['RadixWeights'])
+        scaled_weights = matmul_weights * (2 ** quant_weights['RadixWeights'])
         quant_weights['Weights'] = scaled_weights.astype(dtype.as_numpy_dtype())
 
         print("Weights radix [%d], multiplier [%f]" %
               (quant_weights['RadixWeights'],
                math.pow(2, quant_weights['RadixWeights'])))
 
-        print("Quantised dense layer weights original range [%f - %f] quant range [%d - %d] scaled [%f - %f]" %
+        print("Quantised dense layer weights original range [%f - %f] "
+              "quant range [%d - %d] scaled [%f - %f]" %
               (mm_min, mm_max,
-               np.min(quant_weights['Weights']), np.max(quant_weights['Weights']),
-               np.min(scaled_weights), np.max(scaled_weights)))
+               np.min(quant_weights['Weights']),
+               np.max(quant_weights['Weights']),
+               np.min(scaled_weights),
+               np.max(scaled_weights)))
 
-        # calculate the radix point of the output, this needs to be optimised for all the values
-        # of the biases, the output of mat_mul, and the resulting add
+        # calculate the radix point of the output, this needs to be
+        # optimised for all the values of the biases, the output of
+        # mat_mul, and the resulting add
         mat_mul_result, biases, add_result = sess.run([self.mat_mul,
                                                        self.biases,
                                                        self.output],
@@ -284,13 +309,17 @@ class DenseLayer(BaseLayer):
             add_max = np.max(np.array(add_result))
             output_min = min(mat_mul_min, biases_min, add_min)
             output_max = min(mat_mul_max, biases_max, add_max)
-            quant_weights['RadixOutput'] = BaseLayer.optimal_radix(output_min, output_max, dtype)
+            quant_weights['RadixOutput'] = BaseLayer.optimal_radix(output_min,
+                                                                   output_max,
+                                                                   dtype)
 
-        quant_weights['Biases'] = (np.array(biases) *
-                                   math.pow(2, quant_weights['RadixOutput'])).astype(dtype.as_numpy_dtype())
+        quant_weights['Biases'] = (
+                np.array(biases) * (2**quant_weights['RadixOutput'])
+        ).astype(dtype.as_numpy_dtype())
 
-        quant_weights['PostMMShift'] =\
-            (input_radix_point + quant_weights['RadixWeights']) - quant_weights['RadixOutput']
+        quant_weights['PostMMShift'] = \
+          (input_radix_point +
+           quant_weights['RadixWeights']) - quant_weights['RadixOutput']
 
         return quant_weights
 
@@ -413,14 +442,16 @@ class Conv2DLayer(BaseLayer):
               (quant_weights['RadixWeights'],
                math.pow(2, quant_weights['RadixWeights'])))
 
-        print("Quantised %s layer weights original range [%f - %f] quant range [%d - %d] scaled [%f - %f]" %
+        print("Quantised %s layer weights original range [%f - %f] "
+              "quant range [%d - %d] scaled [%f - %f]" %
               (self.layer_type,
                mm_min, mm_max,
-               np.min(quant_weights['Weights']), np.max(quant_weights['Weights']),
+               np.min(quant_weights['Weights']),
+               np.max(quant_weights['Weights']),
                np.min(scaled_weights), np.max(scaled_weights)))
 
-        # calculate the radix point of the output, this needs to be optimised for the output of the covolution
-        # operation
+        # calculate the radix point of the output, this needs to be
+        # optimised for the output of the covolution operation
         conv2d_result = sess.run([self.conv2d_result], test_data_dict)
 
         if fixed_radix is not None:
@@ -428,7 +459,9 @@ class Conv2DLayer(BaseLayer):
         else:
             output_min = np.min(np.array(conv2d_result))
             output_max= np.max(np.array(conv2d_result))
-            quant_weights['RadixOutput'] = BaseLayer.optimal_radix(output_min, output_max, dtype)
+            quant_weights['RadixOutput'] = BaseLayer.optimal_radix(output_min,
+                                                                   output_max,
+                                                                   dtype)
 
         quant_weights['PostMMShift'] =\
             (input_radix_point + quant_weights['RadixWeights']) - quant_weights['RadixOutput']
@@ -445,7 +478,9 @@ class TrainingCrossEntropy:
 
         with tf.name_scope('training'):
 
-            self.loss = tf.losses.sparse_softmax_cross_entropy(labels=training_labels, logits=model_lables)
+            self.loss = tf.losses.sparse_softmax_cross_entropy(
+              labels=training_labels, logits=model_lables
+            )
             tf.summary.scalar('cross_entropy_loss', self.loss)
 
             self.train_step = optimizer(learning_rate).minimize(self.loss)
@@ -456,8 +491,10 @@ class ClassificationAccuracy:
     def __init__(self, model_output, training):
 
         with tf.name_scope('accuracy'):
-            correct_prediction = tf.equal(tf.argmax(model_output, 1), training, name='correct_prediction')
-            self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32), name='accuracy')
+            correct_prediction = tf.equal(tf.argmax(model_output, 1),
+                                          training, name='correct_prediction')
+            self.accuracy = tf.reduce_mean(tf.cast(correct_prediction,
+                                                   tf.float32), name='accuracy')
         tf.summary.scalar('accuracy', self.accuracy)
 
 
@@ -482,13 +519,16 @@ def train_model(sess,
         summary, _ = sess.run([merged, train_step], feed_dict=feed_fn(True))
         train_writer.add_summary(summary, i)
 
-        # every 10th step calculate the accurary and update summary and progress bar
+        # every 10th step calculate the accurary and update
+        # summary and progress bar
         if i % 10 == 0:  # Record summaries and test-set accuracy
-            summary, quality = sess.run([merged, quality_metric], feed_dict=feed_fn(False))
+            summary, quality = sess.run([merged, quality_metric],
+                                        feed_dict=feed_fn(False))
             test_writer.add_summary(summary, i)
             pb.update_progress_bar(i / float(count),
                                    pre_msg=" " + training_label,
-                                   post_msg='%s is %s' % (quality_label, quality),
+                                   post_msg='%s is %s' % (quality_label,
+                                                          quality),
                                    size=40)
 
     # Add final progress bar update at 100% and close summary writers

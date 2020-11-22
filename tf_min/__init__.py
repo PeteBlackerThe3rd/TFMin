@@ -1,14 +1,16 @@
 __version__ = "1.0.0"
 
+import sys
+
 # import core Graph class, supporting classes and types
 from .graph import TenType, TenMetaType, TensorShape, Tensor, Operation, Graph
 
 # import code generator classes
 from .graph_c_gen import CodeGenerator
+from .graph_verify import GraphVerifyOutput
 from .timer_code_gen import TimingCodeGenerator
 from .deployment_runner import DeploymentRunner
 from .deployment_timer import DeploymentTimer
-from .deployment_timer_leon import DeploymentTimerLeon
 from .deployment_compare import DeploymentCompare, ComparisonResult
 
 # import memory optimisors

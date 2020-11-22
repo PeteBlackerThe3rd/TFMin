@@ -41,12 +41,13 @@ import fcntl
 import subprocess as sp
 import select
 
-from tf_min import graph as tfm_g
-from tf_min import types
+# from tf_min import graph as tfm_g
+from . import types
+# from tf_min import types
 # from tf_min import cpp_code_gen as c_gen
-from tf_min import graph_c_gen
-from tf_min import exceptions as exc
-from tf_min.op_kernels.base_op_kernel import BaseOpKernel
+from . import graph_c_gen
+from . import exceptions as exc
+from .op_kernels.base_op_kernel import BaseOpKernel
 
 
 class DeploymentRunner:
@@ -356,8 +357,13 @@ int main(int argc, char **argv[]) {
       generated_tensor = np.array(flat_values)
       generated_tensor = \
           generated_tensor.reshape(output.shape.get_shape(1))
-      generated_output_tensors.append(generated_tensor)
+      generated_tensor = generated_tensor.astype(
+        types.tfmin_to_np(output.d_type)
+      )
+
       # TODO create numpy.ndarray with correct layout from this data
+
+      generated_output_tensors.append(generated_tensor)
 
     # print("Completed communication with c test binary")
     # ensure test binary has terminated

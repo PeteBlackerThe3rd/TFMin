@@ -43,6 +43,11 @@ class TFMinInvalidObject(TFMinException):
   pass
 
 
+class TFMinLayerBuildFailed(TFMinException):
+  """ Exception thrown when creating a Tensorflow layer using """
+  pass
+
+
 class TFMinDeploymentFailed(TFMinException):
   """ Exception thrown whenever a c deployment fails """
   pass

@@ -1,3 +1,4 @@
+#!/usr/bin/env python -W ignore::DeprecationWarning
 """
     TFMin v1.0 Minimal TensorFlow to C++ exporter
     ------------------------------------------
@@ -35,170 +36,184 @@ import os
 import sys
 import numpy as np
 
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning, message="unclosed.*<ssl.SSLSocket.*>")
+warnings.simplefilter(action='ignore', category=FutureWarning)
+
+
 import tensorflow as tf
 from tensorflow.examples.tutorials.mnist import input_data
-
-from tf_min import graph as tfm_g
-from tf_min import graph_from_tf as tfm_tf
-from tf_min.graph_verify import GraphVerifyOutput
-import tf_min.mem_opt.graph_heap_opt as tfm_heap_opt
-from tf_min import graph_2_svg as tfm_svg
-from tf_min.pipeline import Pipeline
-import tf_min.layers as tfm_layers
-
-flags_g = None
+import tf_min
+from examples.shared import layers as layer_hlprs
 
 
 def model(input_tensor, dtype=tf.float32, quant_settings=None):
 
-    layer1 = tfm_layers.DenseLayer(
+    layer1 = layer_hlprs.DenseLayer(
         input_tensor,
         output_dim=300,
         layer_name="Layer1",
         act=tf.nn.relu,
         dtype=dtype,
-        quant_settings=tfm_layers.BaseLayer.get_quant(quant_settings, 0)
+        quant_settings=layer_hlprs.BaseLayer.get_quant(quant_settings, 0)
     )
 
-    layer2 = tfm_layers.DenseLayer(
+    layer2 = layer_hlprs.DenseLayer(
         layer1.output,
         output_dim=10,
         layer_name="Layer2",
         act=tf.identity,
         dtype=dtype,
-        quant_settings=tfm_layers.BaseLayer.get_quant(quant_settings, 1)
+        quant_settings=layer_hlprs.BaseLayer.get_quant(quant_settings, 1)
     )
 
     return [layer1, layer2]
 
 
-def train(flags):
+def train(args):
 
-    print("Getting training data")
-    mnist = input_data.read_data_sets(flags.data_dir, fake_data=False)
-    print("Done")
+  #
+  # Download the MNIST dataset used for training and evaluation.
+  #
+  print("Getting training data")
+  mnist = input_data.read_data_sets(args.data_dir, fake_data=False)
+  print("Done")
 
-    # sess = tf.InteractiveSession()
-    tf.reset_default_graph()
-    sess = tf.Session()
+  #
+  # Create simple two layer fully connected network.
+  # Setup cross entropy for training and classification accuracy.
+  #
+  tf.reset_default_graph()
+  sess = tf.Session()
 
-    # Input placeholders
-    with tf.name_scope('input'):
-        x = tf.placeholder(tf.float32, [None, 784], name='x-input')
-        y_ = tf.placeholder(tf.int64, [None], name='y-input')
+  # Input placeholders
+  with tf.name_scope('input'):
+    x = tf.placeholder(tf.float32, [None, 784], name='x-input')
+    y_ = tf.placeholder(tf.int64, [None], name='y-input')
 
-    with tf.name_scope('input_reshape'):
-        image_shaped_input = tf.reshape(x, [-1, 28, 28, 1])
-        tf.summary.image('input', image_shaped_input, 10)
+  with tf.name_scope('input_reshape'):
+    image_shaped_input = tf.reshape(x, [-1, 28, 28, 1])
+    tf.summary.image('input', image_shaped_input, 10)
+  layers = model(x)
+  y = layers[-1].output
+  print("Built model.")
 
-    """-------------------------------------------------------------------------
-        Create simple two layer fully connected network.
-        Use cross entropy to train.
-        ---------------------------------------------------------------------"""
-    layers = model(x)
-    y = layers[-1].output
-    print("Built model.")
+  training = layer_hlprs.TrainingCrossEntropy(y,
+                                              y_,
+                                              tf.train.AdamOptimizer,
+                                              args.learning_rate)
+  accuracy = layer_hlprs.ClassificationAccuracy(y, y_)
+  tf.global_variables_initializer().run(session=sess)
+  print("Added training operations to model.")
 
-    training = tfm_layers.TrainingCrossEntropy(y,
-                                               y_,
-                                               tf.train.AdamOptimizer,
-                                               flags.learning_rate)
-    accuracy = tfm_layers.ClassificationAccuracy(y, y_)
-    tf.global_variables_initializer().run(session=sess)
-    print("Added training operations to model.")
-
-    """-------------------------------------------------------------------------
-    Train the model, and also write summaries.
-    Every 10th step, measure test-set accuracy, and write test summaries
-    All other steps, run train_step on training data, & add training summaries
-    -------------------------------------------------------------------------"""
-
-    def feed_dict(train_d):
-        """Make a TensorFlow feed_dict: maps data onto Tensor placeholders."""
-        if train_d:
-            xs, ys = mnist.train.next_batch(100, False)
-        else:
-            xs, ys = mnist.test.images.astype(np.float32),\
-                     mnist.test.labels.astype(np.uint8)
-
-        return {x: xs, y_: ys}
-
-    tfm_layers.train_model(sess,
-                           training.train_step,
-                           feed_dict,
-                           accuracy.accuracy,
-                           flags.log_dir,
-                           quality_label="Accuracy",
-                           count=flags.max_steps,
-                           training_label="Training MNIST Classifier")
-
-    """-------------------------------------------------------------------------
-    Export Inference model to c code using the TFMin library
-    -------------------------------------------------------------------------"""
-    print("Using TFMin library to export minimal C"
-          "implimentation of this TensorFlow graph.")
-    output_tensor = layers[-1].output
-    graph = tfm_tf.graph_from_tf_sess(sess, outputs=[output_tensor])
-
-    # Use the built-in Greedy Heap pipeline to sequence this graph and pre-
-    # allocate its intermediate buffers.
-    Pipeline(builtin="GreedyHeap")(graph)
-
-    svg_writer = tfm_svg.SVGWriter(graph)
-    svg_writer.write("original_input_graph.svg")
-    print("Done.")
-
-    # verify the output of this graph matches tensorflow when it is
-    # exported, built, and executed
-    print("Testing verify output test harness")
-    verifier = GraphVerifyOutput(graph=graph,
-                                 verbose=True,
-                                 tmp_dir="verify_tmp")
-
-    [expected_output] = sess.run(
-      [output_tensor],
-      feed_dict={x: mnist.test.images[:1]}
-    )
-
-    result = verifier.verify_model(input_tensors=[mnist.test.images[:1]],
-                                   expected_output_tensors=[expected_output])
-
-    if result.success:
-      print("Exported model passed verification.")
+  #
+  # Train the model using the downloaded MNIST dataset, and display the
+  # accuracy which is achieved.
+  #
+  def feed_dict(train_d):
+    """ Make feed_dict: maps data onto input tensors """
+    if train_d:
+      xs, ys = mnist.train.next_batch(100, False)
     else:
-      print("Exported model failed verification.")
+      xs, ys = mnist.test.images.astype(np.float32),\
+               mnist.test.labels.astype(np.uint8)
 
-    sess.close()
-    print("Complete")
-    return result.success
+    return {x: xs, y_: ys}
+
+  layer_hlprs.train_model(sess,
+                          training.train_step,
+                          feed_dict,
+                          accuracy.accuracy,
+                          args.log_dir,
+                          quality_label="Accuracy",
+                          count=args.max_steps,
+                          training_label="Training MNIST Classifier")
+
+  #
+  # Everything up to this point has been a conventional Tensorflow work flow.
+  # Here is where we introduce the TFMin framework and use it to generate
+  # an ANSI C implementation of this model. This C code will then be built
+  # and executed and verification data passed into it to confirm that it
+  # produces the same results as the original TF model.
+  #
+
+  # Command generates a tf_min.Graph object which describes the model
+  # stored in the current TF session.
+  graph = tf_min.graph_from_tf_sess(sess, outputs=[layers[-1].output])
+
+  # Before this code can be generated for this graph the sequence of its
+  # operations must be defined, and the location of any intermediate
+  # tensor buffers pre-allocated.
+  # A pre-defined pipeline of graph translators is invoked here to perform
+  # both these tasks with a single command.
+  # The GreedyHeap pipeline includes the SequenceOps GraphTranslator and the
+  # HeapSmartOrder buffer pre-allocator.
+  tf_min.Pipeline(builtin="GreedyHeap")(graph)
+
+  # Our graph is now ready to export to C code, but before we do lets
+  # export it's topology as a SVG diagram so we can confirm it has been
+  # imported correctly.
+  svg_writer = tf_min.SVGWriter(graph)
+  svg_writer.write("mnist_dense_graph.svg")
+  print("Done.")
+
+  # verify the output of this graph matches tensorflow when it is
+  # exported, built, and executed
+  print("Testing verify output test harness")
+  verifier = tf_min.GraphVerifyOutput(graph=graph,
+                                      verbose=True)
+
+  [expected_output] = sess.run(
+    [layers[-1].output],
+    feed_dict={x: mnist.test.images[:1]}
+  )
+
+  result = verifier.verify_model(input_tensors=[mnist.test.images[:1]],
+                                 expected_output_tensors=[expected_output])
+
+  if result.passed():
+    print("Exported model passed verification.")
+  else:
+    print("Exported model failed verification.")
+
+  sess.close()
+  print("Complete")
+  return result.success
 
 
-def main(_):
-    if tf.gfile.Exists(flags_g.log_dir):
-        tf.gfile.DeleteRecursively(flags_g.log_dir)
-    tf.gfile.MakeDirs(flags_g.log_dir)
-    train(flags_g)
+def main(args):
+  if tf.gfile.Exists(args.log_dir):
+    tf.gfile.DeleteRecursively(args.log_dir)
+  tf.gfile.MakeDirs(args.log_dir)
+  train(args)
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--max_steps', type=int, default=10000,
-                        help='Number of steps to run trainer.')
-    parser.add_argument('--learning_rate', type=float, default=0.001,
-                        help='Initial learning rate')
-    parser.add_argument('--dropout', type=float, default=0.9,
-                        help='Keep probability for training dropout.')
-    parser.add_argument(
-        '--data_dir',
-        type=str,
-        default=os.path.join(os.getenv('TEST_TMPDIR', '/tmp'),
-                             'tensorflow/mnist/input_data'),
-        help='Directory for storing input data')
-    parser.add_argument(
-        '--log_dir',
-        type=str,
-        default=os.path.join(os.getenv('TEST_TMPDIR', '/tmp'),
-                             'tensorflow/mnist/logs/mnist_with_summaries'),
-        help='Summaries log directory')
-    flags_g, unparsed = parser.parse_known_args()
-    tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+  parser = argparse.ArgumentParser()
+  parser.add_argument('--max_steps', type=int, default=10000,
+                      help='Number of steps to run trainer.')
+  parser.add_argument('--learning_rate', type=float, default=0.001,
+                      help='Initial learning rate')
+  parser.add_argument('--dropout', type=float, default=0.9,
+                      help='Keep probability for training dropout.')
+  parser.add_argument(
+    '--data_dir',
+    type=str,
+    default=os.path.join(
+      os.getenv('TEST_TMPDIR', '/tmp'),
+      'tensorflow/tf_min_mnist_dense_example/input_data'
+    ),
+    help='Directory for storing input data')
+  parser.add_argument(
+    '--log_dir',
+    type=str,
+    default=os.path.join(
+      os.getenv('TEST_TMPDIR', '/tmp'),
+      'tensorflow/tf_min_mnist_dense_example/logs/mnist_with_summaries'
+    ),
+    help='Summaries log directory')
+  cmd_line_args, _ = parser.parse_known_args()
+
+  with warnings.catch_warnings():
+    warnings.simplefilter("ignore", category=DeprecationWarning)
+    main(cmd_line_args)
