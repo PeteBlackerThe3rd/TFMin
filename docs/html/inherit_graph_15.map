@@ -1,0 +1,5 @@
+<map id="Graphical Class Hierarchy" name="Graphical Class Hierarchy">
+<area shape="rect" id="node1" href="$classtf__min_1_1layers_1_1BaseLayer.html" title="tf_min.layers.BaseLayer" alt="" coords="5,31,168,57"/>
+<area shape="rect" id="node2" href="$classtf__min_1_1layers_1_1Conv2DLayer.html" title="tf_min.layers.Conv2DLayer" alt="" coords="216,5,397,32"/>
+<area shape="rect" id="node3" href="$classtf__min_1_1layers_1_1DenseLayer.html" title="tf_min.layers.DenseLayer" alt="" coords="221,56,392,83"/>
+</map>
