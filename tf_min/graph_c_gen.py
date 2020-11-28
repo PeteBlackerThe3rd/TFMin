@@ -35,13 +35,10 @@ import sys
 import os
 import random
 
-# from tf_min import graph as tfm_g
-from tf_min import types
-# from tf_min import cpp_code_gen as c_gen
-
+from .types import *
 from .op_kernels import *
 from .op_kernels.base_op_kernel import BaseOpKernel
-# from tf_min.v2_kernels.pooling import PoolingOpKernel
+from .exceptions import TFMinLayerBuildFailed
 
 
 class CodeGenerator:
@@ -53,7 +50,7 @@ class CodeGenerator:
 
     def __init__(self, graph, base_name="model_", prefix="", path=".",
                  clang_format=None, byte_order="@", batch_size=1,
-                 fake_weights=None):
+                 fake_weights=None, verbose=False):
         """
         Create a CodeGenerator object for the give model and settings
         :param graph: tf_min.Graph, model to export
@@ -68,6 +65,9 @@ class CodeGenerator:
                              buffer of the given size will be used. Allows
                              testing of models on platforms without enough
                              memory to store a models weights.
+
+        :raises: TFMinLayerBuildFailed if the given graph is not sequenced
+                 or its intermediate buffers have not been pre-allocated.
         """
         # verify that this graph has been sequenced and intermediate
         # tensors have been pre-allocated.
@@ -82,70 +82,61 @@ class CodeGenerator:
             self.byte_order = byte_order
             self.batch_size = batch_size
             self.fake_weights = fake_weights
-            self.export_ready = True
+            self.verbose = verbose
         else:
             # model is not ready for export,
-            print("Error: graph given to CodeGeneration object is not ready"
-                  "for export.")
-            self.graph = None
-            self.base_name = None
-            self.prefix = None
-            self.path = None
-            self.clang_format = None
-            self.byte_order = None
-            self.batch_size = 1
-            self.export_ready = False
+            raise TFMinLayerBuildFailed(
+              "Graph given to CodeGeneration object is not ready for export.\n"
+              "Either memory has not been pre-allocated or opeations have not "
+              "been sequenced."
+            )
 
-    def __call__(self, silent=False, debug=False):
+    def __call__(self, debug=False):
         """
         Method which actually generates the c source files of the model and
         its weights.
         :return: True if export successful, False operation
         """
-        if not self.export_ready:
-            print("Error: Cannot generate code for a graph which isn't ready")
-            return
-
         # ensure the output path exists
         if not os.path.exists(self.path):
           os.mkdir(self.path)
 
         # Generate the four source files containing this model
-        if not silent:
-            print("Generating weight header.")
+        if self.verbose:
+          print("Generating weight header.")
         wh_okay = self.gen_weights_header()
-        if not silent:
-            if wh_okay:
-                print("Complete.")
-            else:
-                print("Failed.")
+        if self.verbose:
+          if wh_okay:
+            print("Complete.")
+          else:
+            print("Failed.")
 
-        if not silent:
-            print("Generating weight source.")
+        if self.verbose:
+          print("Generating weight source.")
         ws_okay = self.gen_weights_source()
-        if not silent:
-            if ws_okay:
-                print("Complete.")
-            else:
-                print("Failed.")
+        if self.verbose:
+          if ws_okay:
+            print("Complete.")
+          else:
+            print("Failed.")
 
-        if not silent:
-            print("Generating model header.")
+        if self.verbose:
+          print("Generating model header.")
         mh_okay = self.gen_model_header()
-        if not silent:
-            if mh_okay:
-                print("Complete.")
-            else:
-                print("Failed.")
+        if self.verbose:
+          if mh_okay:
+            print("Complete.")
+          else:
+            print("Failed.")
 
-        if not silent:
-            print("Generating model source.")
+        if self.verbose:
+          print("Generating model source.")
         ms_okay = self.gen_model_source(debug=debug)
-        if not silent:
-            if ms_okay:
-                print("Complete.")
-            else:
-                print("Failed.")
+        if self.verbose:
+          if ms_okay:
+            print("Complete.")
+          else:
+            print("Failed.")
 
         if self.clang_format is not None:
           filenames = [os.path.join(self.path, self.base_name + 'model.c'),
@@ -159,13 +150,15 @@ class CodeGenerator:
           clang_stream = os.popen(clang_command)
           clang_result = clang_stream.read().strip()
           if clang_result == "":
-            if not silent:
+            if self.verbose:
               print("Formatted code to style %s okay." % self.clang_format)
           else:
-            print("Failed to format code with error :\n%s" % clang_result)
+            raise TFMinLayerBuildFailed(
+              "Failed to format code with error :\n%s" % clang_result
+            )
 
         if wh_okay and ws_okay and mh_okay and ms_okay:
-            if not silent:
+            if self.verbose:
                 print("All source files generated okay.")
             return True
         else:
@@ -259,14 +252,15 @@ class CodeGenerator:
             if weights_size >= self.fake_weights:
               offset = 0
             else:
-              weights_d_type_size = types.get_dtype_size(weight.d_type)
+              weights_d_type_size = get_dtype_size(weight.d_type)
               rand_max = ((self.fake_weights - weights_size) /
                           weights_d_type_size)
               offset = random.randint(0, rand_max-1) * weights_d_type_size
-            file.write("const uint32_t *%s = (uint32_t*)"
-                       "(fake_weights + %d);\n" % (
-              identifier, offset
-            ))
+            file.write(
+              "const uint32_t *%s = (uint32_t*)"
+              "(fake_weights + %d);\n" %
+              (identifier, offset)
+            )
 
         return True
       except IOError as e:
@@ -303,6 +297,10 @@ class CodeGenerator:
         :param tags:
         :return:
         """
+        if len(tags) != 0:
+          raise TFMinLayerBuildFailed(
+            "Warning op_kernel tags feature not yet implemented"
+          )
         for kernel in BaseOpKernel.__subclasses__():
             if kernel.matches(operation):
               return kernel
@@ -442,10 +440,10 @@ class CodeGenerator:
         for input in self.graph.get_inputs():
             identifiers.append('const p_' +
                                self.c_safe_identifier(input.label))
-            d_types.append(types.get_dtype_c_type(input.d_type))
+            d_types.append(get_dtype_c_type(input.d_type))
         for output in self.graph.get_outputs():
             identifiers.append('p_' + self.c_safe_identifier(output.label))
-            d_types.append(types.get_dtype_c_type(output.d_type))
+            d_types.append(get_dtype_c_type(output.d_type))
         params = []
         for idx, identifier in enumerate(identifiers):
             params.append(d_types[idx] +
@@ -461,7 +459,10 @@ class CodeGenerator:
         identifier = self.prefix + self.c_safe_identifier(tensor.label)
 
         if tensor.value is None:
-          print("Tensor [%s] value is None!" % tensor.label)
+          raise TFMinLayerBuildFailed(
+            "Failed to generate C source, Tensor [%s] value is None!" %
+            tensor.label
+          )
 
         if not isinstance(tensor.value, np.ndarray):
             tensor.value = np.array(tensor.value)
@@ -469,23 +470,19 @@ class CodeGenerator:
         # the value of constant tensors is stored in a np.ndarray the layout
         # will appropriate for direct conversion to a c array layout
         value_flat = tensor.value.flatten(order='C')
-        # print("value_flat is [%s]" % str(value_flat))
-        # print("flat size is [%s]" % value_flat.size)
 
         # Constant literals are always written as arrays of unsigned 32 bit
         # integers in hex. This is both a dense format and a precise way of
         # representing floating point values in text.
-        struct_type = types.get_dtype_struct_type(tensor.d_type)
+        struct_type = get_dtype_struct_type(tensor.d_type)
         value_buffer = st.pack(self.byte_order + struct_type * value_flat.size,
                                *value_flat)
-        # print("Buffer len [%d]" % len(value_buffer))
 
         # pad the buffer to a multiple of 4 bytes
         pad_len = 4 - len(value_buffer) % 4
         if pad_len == 4:
             pad_len = 0
         value_buffer += bytearray([0] * pad_len)
-        # print("Buffer len padd [%d]" % len(value_buffer))
 
         # write definition as one line (clang format will clean it up)
         int_values = st.unpack(self.byte_order + "I" * int(len(value_buffer)/4),

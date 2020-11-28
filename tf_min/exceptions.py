@@ -59,3 +59,12 @@ class TFMinDeploymentExecutionFailed(TFMinException):
   fails during execution
   """
   pass
+
+
+class TFMinVerificationExecutionFailed(TFMinException):
+  """
+  Exception thrown whenever a graph verification could not be performed for
+  some reason. Note this does not signal that the model failed verification,
+  but rather that the verification itself could be performed.
+  """
+  pass

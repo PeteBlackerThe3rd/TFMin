@@ -45,6 +45,7 @@ import subprocess as sp
 import select
 
 from .deployment_runner import DeploymentRunner
+from .exceptions import TFMinVerificationExecutionFailed
 from . import types
 
 
@@ -53,114 +54,155 @@ class VerificationResult:
 
   """
 
-  def __init__(self, success):
+  def __init__(self, success, failure_reason=""):
     """
     Create a VerificationResult object
     :param success: if this object is representing a successful result
     """
     self.success = success
-    self.output_failures = []
-    self.output_failure_descriptions = []
-    self.build_failure = False
-    self.tensor_count_missmatch = False
-    self.binary_timeout = False
-    self.type_error = False
-    self.type_error_msg = ""
+    self.failure_reason = failure_reason
 
   def passed(self):
     return self.success
 
+  def reason(self):
+    return self.failure_reason
+
+  def __bool__(self):
+    return self.success
+
 
 class GraphVerifyOutput(DeploymentRunner):
+  """
+  Object which generates unit_test versions of a graph, builds them and
+  compares their output to a set of expected outputs.
+  """
+
+  def verify_model(self, input_tensors,
+                   expected_output_tensors,
+                   timeout=30.0,
+                   tollerance=None,
+                   verbose=False):
     """
-    Object which generates unit_test versions of a graph, builds them and
-    compares their output to a set of expected outputs.
+    Method to verify the output of the inference model on test.
+    This function accepts a list of input tensor values as numpy.ndarrays
+    and a list of expected output tensor values as numpy.ndarrays.
+    The build C model is executed and input tensor values piped in via
+    stdin then the generated output tests read back from stdout.
+
+    The generated output values are then compared with the expected output
+    values, and an object with pass/fail status and additional information
+    is returned.
+    :param input_tensors:
+    :param expected_output_tensors:
+    :param timeout: maximum timeout to wait for test binary to generate
+                    output tensors.
+    :param tollerance: None or float, allowable error when comparing
+                       expected and actual model output.
+    :param verbose: Boolean, if true additional debugging info is printed
+    :return: tf_min.VerificationResult object
+    :raises: tf_min.TFMinVerificationExecutionFailed
+             tf_min.TFMinDeploymentFailed
+             tf_min.TFMinDeploymentExecutionFailed
+             ValueError
     """
 
-    def verify_model(self, input_tensors,
-                     expected_output_tensors,
-                     timeout=30.0,
-                     tollerance=None):
-        """
-        Method to verify the output of the inference model on test.
-        This function accepts a list of input tensor values as numpy.ndarrays
-        and a list of expected output tensor values as numpy.ndarrays.
-        The build C model is executed and input tensor values piped in via
-        stdin then the generated output tests read back from stdout.
+    # check the given number of input and output tensors matches the
+    # graph.
+    if len(input_tensors) != len(self.graph.get_inputs()):
+      raise TFMinVerificationExecutionFailed(
+          "Unexpected number of input tensors given. Expected %d, got %d" %
+          (len(self.graph.get_inputs()), len(input_tensors))
+      )
+    if len(expected_output_tensors) != len(self.graph.get_outputs()):
+      raise TFMinVerificationExecutionFailed(
+          "Unexpected number of output tensors given. Expected %d, got %d" %
+          (len(self.graph.get_outputs()), len(expected_output_tensors))
+      )
 
-        The generated output values are then compared with the expected output
-        values, and an object with pass/fail status and additional information
-        is returned.
-        :param input_tensors:
-        :param expected_output_tensors:
-        :param timeout: maximum timeout to wait for test binary to generate
-                        output tensors.
-        :return: tfmin.VerificationResult object
-        """
+    # check the data type of input and expected output ndarrays match
+    # the data types of the graph
+    for idx, input in enumerate(input_tensors):
+      if not isinstance(input, np.ndarray):
+        raise TFMinVerificationExecutionFailed(
+          "Given input %d tensor is not a numpy.ndarray." % idx
+        )
+      given_type = types.np_to_tfmin(input.dtype)
+      expected_type = self.graph.get_inputs()[idx].d_type
+      if given_type != expected_type:
+        raise TFMinVerificationExecutionFailed(
+          "Given input %d tensor type missmatch, expected %s "
+          "but was given %s!" % (idx, expected_type, given_type)
+        )
+      given_shape = list(input.shape)
+      expected_shape = \
+          self.graph.get_inputs()[idx].shape.get_shape(batch_size=1)
+      if given_shape != expected_shape:
+        raise TFMinVerificationExecutionFailed(
+          "Given input %d tensor shape missmatch, expected %s but was "
+          "given %s!" % (idx, str(expected_shape), str(given_shape))
+        )
 
-        # check the data type of input and expected output ndarrays match
-        # the data types of the graph
-        for idx, input in enumerate(input_tensors):
-            if not isinstance(input, np.ndarray):
-                print("Error: input tensor is not a numpy.ndarray.")
-            given_type = types.np_to_tfmin(input.dtype)
-            expected_type = self.graph.get_inputs()[idx].d_type
-            if given_type != expected_type:
-                msg = ("Error: Input tensor type missmatch, expected %s "
-                       "but was given %s!" % (expected_type, given_type))
-                print(msg)
-                result = VerificationResult(False)
-                result.type_error = True
-                result.type_error_msg = msg
-                return result
-        for idx, output in enumerate(expected_output_tensors):
-            if not isinstance(output, np.ndarray):
-                print("Error: input tensor is not a numpy.ndarray.")
-            given_type = types.np_to_tfmin(output.dtype)
-            expected_type = self.graph.get_outputs()[idx].d_type
-            if given_type != expected_type:
-                msg = ("Error: Output tensor type missmatch, expected %s "
-                       "but was given %s!" % (expected_type, given_type))
-                print(msg)
-                result = VerificationResult(False)
-                result.type_error = True
-                result.type_error_msg = msg
-                return result
+    for idx, output in enumerate(expected_output_tensors):
+      if not isinstance(output, np.ndarray):
+        raise TFMinVerificationExecutionFailed(
+          "Given output %d tensor is not a numpy.ndarray." % idx
+        )
+      given_type = types.np_to_tfmin(output.dtype)
+      expected_type = self.graph.get_outputs()[idx].d_type
+      if given_type != expected_type:
+        raise TFMinVerificationExecutionFailed(
+          "Given output %d tensor type missmatch, expected %s "
+          "but was given %s!" % (idx, expected_type, given_type)
+        )
+      given_shape = list(output.shape)
+      expected_shape = \
+          self.graph.get_outputs()[idx].shape.get_shape(batch_size=1)
+      if given_shape != expected_shape:
+        raise TFMinVerificationExecutionFailed(
+          "Given output %d tensor shape missmatch, expected %s but was "
+          "given %s!" % (idx, str(expected_shape), str(given_shape))
+        )
 
-        actual_outputs = self.execute_model(input_tensors,
-                                            timeout=timeout)
+    # Build and execute the model with the provided input tensors
+    actual_outputs = self.execute_model(input_tensors,
+                                        timeout=timeout)
 
-        correct = True
+    # Check if model output was within 'tollerance' of the given expected
+    # output.
+    for idx, expected_output in enumerate(expected_output_tensors):
 
-        for idx, expected_output in enumerate(expected_output_tensors):
+      # use the given tollerance and if none was given then use
+      # default for this type
+      this_tollerance = tollerance
+      if this_tollerance is None:
+        d_type = types.np_to_tfmin(actual_outputs[idx].dtype)
+        if d_type == types.TenDType.FLOAT64:
+          this_tollerance = 1e-10
+        elif d_type == types.TenDType.FLOAT32:
+          this_tollerance = 1e-5
+        else:
+          this_tollerance = 0
 
-            # use the given tollerance and if none was given then use
-            # default for this type
-            this_tollerance = tollerance
-            if this_tollerance is None:
-                d_type = types.np_to_tfmin(actual_outputs[idx].dtype)
-                if d_type == types.TenDType.FLOAT64:
-                    this_tollerance = 1e-10
-                elif d_type == types.TenDType.FLOAT32:
-                    this_tollerance = 1e-5
-                else:
-                    this_tollerance = 0
+      errors = np.absolute(expected_output - actual_outputs[idx])
+      if np.amax(errors) > this_tollerance:
+        reason_msg = "Output %d [%s] output differs by %e (tollerance %e)\n" % (
+            idx,
+            self.graph.get_outputs()[idx].label,
+            np.amax(errors),
+            this_tollerance
+          )
+        reason_msg += "output [%d]\n" % idx
+        reason_msg += "Expected:\n%s\n" % expected_output
+        reason_msg += "Generated:\n%s\n------\n" % actual_outputs[idx]
 
-            errors = np.absolute(expected_output - actual_outputs[idx])
-            if np.amax(errors) > this_tollerance:
-                correct = False
-                print("Output %d [%s] output differs by %e (tollerance %e)" % (
-                  idx,
-                  self.graph.get_outputs()[idx].label,
-                  np.amax(errors),
-                  this_tollerance
-                ))
-                print("output [%d]" % idx)
-                print("Expected:\n%s" % expected_output)
-                print("Generated:\n%s\n------" % actual_outputs[idx])
+        if verbose:
+          print(reason_msg)
 
-        if correct:
-            print("Verification Passed.")
+        return VerificationResult(False, reason_msg)
 
-        result = VerificationResult(correct)
-        return result
+    if verbose:
+      print("Verification Passed.")
+
+    result = VerificationResult(True)
+    return result

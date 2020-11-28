@@ -178,7 +178,7 @@ int main(int argc, char **argv[]) {
                                  clang_format='Google',
                                  byte_order="@", batch_size=1
                                  )
-    c_generator(silent=True)
+    c_generator()
     if verbose:
       print("Generated c code for model on test okay.")
 
@@ -197,8 +197,8 @@ int main(int argc, char **argv[]) {
     Destructor, detects if the tmp_dir exists and deletes it if it does
     :return: None
     """
-    # if os.path.exists(self.tmp_dir):
-    #     shutil.rmtree(self.tmp_dir)
+    if os.path.exists(self.tmp_dir):
+        shutil.rmtree(self.tmp_dir)
 
   def generate_test_harness(self, flags):
     """

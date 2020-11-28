@@ -55,7 +55,7 @@ class BaseLayer:
     def weight_variable(shape=[], dtype=tf.float32, initial=None):
         """Create a weight variable with appropriate initialization."""
         if initial is None:
-            initial = tf.truncated_normal(shape, stddev=0.1)
+            initial = tf.random.truncated_normal(shape, stddev=0.1)
         return tf.Variable(initial_value=initial, dtype=dtype)
 
     @staticmethod
@@ -65,18 +65,18 @@ class BaseLayer:
             initial = tf.constant(0.1, shape=shape)
         return tf.Variable(initial_value=initial, dtype=dtype)
 
-    @staticmethod
+    '''@staticmethod
     def variable_summaries(var):
         """Attach  summaries to a Tensor (for TensorBoard visualization)."""
         with tf.name_scope('summaries'):
             mean = tf.reduce_mean(var)
-            tf.summary.scalar('mean', mean)
+            # tf.summary.scalar('mean', mean)
             with tf.name_scope('stddev'):
                 stddev = tf.sqrt(tf.reduce_mean(tf.square(var - mean)))
-            tf.summary.scalar('stddev', stddev)
-            tf.summary.scalar('max', tf.reduce_max(var))
-            tf.summary.scalar('min', tf.reduce_min(var))
-            tf.summary.histogram('histogram', var)
+            # tf.summary.scalar('stddev', stddev)
+            # tf.summary.scalar('max', tf.reduce_max(var))
+            # tf.summary.scalar('min', tf.reduce_min(var))
+            # tf.summary.histogram('histogram', var)'''
 
     @staticmethod
     def optimal_radix(min_value, max_value, dtype):
@@ -237,18 +237,18 @@ class DenseLayer(BaseLayer):
                     self.weights = BaseLayer.weight_variable(
                       shape=[input_size, output_dim], dtype=dtype
                     )
-                    BaseLayer.variable_summaries(self.weights)
+                    # BaseLayer.variable_summaries(self.weights)
                 with tf.name_scope('biases'):
                     self.biases = BaseLayer.bias_variable(
                       shape=[output_dim], dtype=dtype
                     )
-                    BaseLayer.variable_summaries(self.biases)
+                    # BaseLayer.variable_summaries(self.biases)
                 with tf.name_scope('Wx_plus_b'):
                     self.mat_mul = tf.matmul(input_tensor, self.weights)
                     preactivate = self.mat_mul + self.biases
-                    tf.summary.histogram('pre_activations', preactivate)
+                    # tf.summary.histogram('pre_activations', preactivate)
                 self.output = act(preactivate, name='activation')
-                tf.summary.histogram('activations', self.output)
+                # tf.summary.histogram('activations', self.output)
 
     def get_quantised_weights(self, input_radix_point, dtype, sess,
                               test_data_dict={}, fixed_radix=None):
@@ -317,9 +317,9 @@ class DenseLayer(BaseLayer):
                 np.array(biases) * (2**quant_weights['RadixOutput'])
         ).astype(dtype.as_numpy_dtype())
 
-        quant_weights['PostMMShift'] = \
-          (input_radix_point +
-           quant_weights['RadixWeights']) - quant_weights['RadixOutput']
+        quant_weights['PostMMShift'] = (
+          input_radix_point +
+          quant_weights['RadixWeights']) - quant_weights['RadixOutput']
 
         return quant_weights
 
@@ -335,107 +335,87 @@ class Conv2DLayer(BaseLayer):
                  padding='VALID',
                  act=tf.nn.leaky_relu,
                  pooling=2,
-                 pool_stride=2,
-                 dtype=tf.float32,
-                 quant_settings=None):
-            """Reusable code for making a convolutional neural net layer.
-            It does a convolution, bias add, and then uses an activation function
-            (ReLu defauly) nonlinearize followed by an optional max-pooling layer.
-            It also sets up name scoping so that the resultant graph is easy to read,
-            and adds a number of summary ops.
-            """
+                 pool_stride=2):
+      """Reusable code for making a convolutional neural net layer.
+      It does a convolution, bias add, and then uses an activation
+      function (ReLu defauly) nonlinearize followed by an optional
+      max-pooling layer. It also sets up name scoping so that the
+      resultant graph is easy to read, and adds a number of summary ops.
+      """
 
-            super().__init__()
-            self.layer_type = "Conv2D"
-            self.layer_name = layer_name
+      super().__init__()
+      self.layer_type = "Conv2D"
+      self.layer_name = layer_name
 
-            with tf.name_scope(layer_name):
-                input_channels = int(input_tensor.shape[3])
+      with tf.name_scope(layer_name):
+        input_channels = int(input_tensor.shape[3])
 
-                # setup and generate initial weights for the filters
-                # create weights summaries
-                with tf.name_scope('filter_weights'):
-                    self.filters = BaseLayer.weight_variable([filter_size, filter_size, input_channels, filter_count])
-                    BaseLayer.variable_summaries(self.filters)
+        # setup and generate initial weights for the filters
+        # create weights summaries
+        with tf.name_scope('filter_weights'):
+          self.filters = BaseLayer.weight_variable([filter_size, filter_size,
+                                                    input_channels,
+                                                    filter_count])
 
-                weights_count = filter_size * filter_size * input_channels * filter_count
+        weights_count = (filter_size * filter_size *
+                         input_channels * filter_count)
 
-                # cryptic code to generate a summary image of the filters
-                """if input_channels == 1:
-                    t = tf.reshape(filters, [filter_size, filter_size, filter_count])
-                    filter_size += 2
-                    t = tf.image.resize_image_with_crop_or_pad(t, filter_size, filter_size)
+        strides = [1, stride, stride, 1]
 
-                    # if the filter count is a square number
-                    filter_count_power = m.log(filter_count, 2)
-                    if filter_count_power % 2 == 0:
-                        f_rows = f_cols = int(m.pow(2, (filter_count_power / 2)))
-                    else:
-                        f_rows = int(m.pow(2, (filter_count_power + 1) / 2))
-                        f_cols = int(m.pow(2, (filter_count_power - 1) / 2))
+        # create convotutional layer
+        self.conv2d_result = tf.nn.convolution(
+            input=input_tensor,
+            filter=self.filters,
+            strides=strides[1:3],
+            padding=padding,
+            name="convolution")
 
-                    t = tf.reshape(t, (filter_size, filter_size, f_rows, f_cols))
-                    t = tf.transpose(t, (2, 0, 3, 1))
-                    filters_image = tf.reshape(t, (1, f_rows * filter_size, f_cols * filter_size, 1))
-                    tf.summary.image('conv1_filters', filters_image, 1)"""
+        # add activation function
+        activations = act(self.conv2d_result, name='activations')
 
-                strides = [1, stride, stride, 1]
+        if pooling == 0:
+          print('produced convolutional layer [%s] with size : %s, weights %d' %
+                (layer_name, activations.shape, weights_count))
+          self.output = activations  # return activations
+        else:
+          max_pooling = tf.nn.max_pool(value=activations,
+                                       ksize=[1, pooling, pooling, 1],
+                                       strides=[1, pool_stride, pool_stride, 1],
+                                       padding=padding,
+                                       name='pooling')
 
-                # create convotutional layer
-                self.conv2d_result = tf.nn.convolution(
-                    input=input_tensor,
-                    filter=self.filters,
-                    strides=strides[1:3],
-                    padding=padding,
-                    name="convolution")
+          print('produced convolutional layer [%s] with size : %s, weights %d' %
+                (layer_name, max_pooling.shape, weights_count))
+          self.output = max_pooling  # return max_pooling
 
-                # create convotutional layer
-                """self.conv2d_result = tf.nn.conv2Dd(
-                    input=input_tensor,
-                    filter=self.filters,
-                    strides=strides,
-                    padding=padding,
-                    name="convolution")"""
+    def get_quantised_weights(self,
+                              input_radix_point, dtype,
+                              sess, test_data_dict={},
+                              fixed_radix=None):
 
-                # add activation function
-                activations = act(self.conv2d_result, name='activations')
-
-                if pooling == 0:
-                    print('produced convolutional layer [%s] with size : %s, weights %d' %
-                          (layer_name, activations.shape, weights_count))
-                    self.output = activations  # return activations
-                else:
-                    max_pooling = tf.nn.max_pool(value=activations,
-                                                 ksize=[1, pooling, pooling, 1],
-                                                 strides=[1, pool_stride, pool_stride, 1],
-                                                 padding=padding,
-                                                 name='pooling')
-
-                    print('produced convolutional layer [%s] with size : %s, weights %d' %
-                          (layer_name, max_pooling.shape, weights_count))
-                    self.output = max_pooling  # return max_pooling
-
-    def get_quantised_weights(self, input_radix_point, dtype, sess, test_data_dict={}, fixed_radix=None):
-
-        quant_weights = {'LayerType': self.layer_type, 'RadixIn': input_radix_point}
+        quant_weights = {'LayerType': self.layer_type,
+                         'RadixIn': input_radix_point}
 
         print("Quantising %s layer %s." % (self.layer_type, self.layer_name))
 
-        # the radix point of the weights for matrix multiplication is independant of the input radix point
+        # the radix point of the weights for matrix multiplication
+        # is independant of the input radix point
         filter_weights = np.array(sess.run([self.filters]))
         filter_weights = filter_weights.reshape(filter_weights.shape[1:])
 
         if fixed_radix is not None:
             quant_weights['RadixWeights'] = fixed_radix
         else:
-            quant_weights['RadixWeights'] = BaseLayer.optimal_radix(np.min(filter_weights),
-                                                                    np.max(filter_weights),
-                                                                    dtype)
+            quant_weights['RadixWeights'] = \
+              BaseLayer.optimal_radix(np.min(filter_weights),
+                                      np.max(filter_weights),
+                                      dtype)
 
         mm_min = np.min(filter_weights)
         mm_max = np.max(filter_weights)
 
-        scaled_weights = filter_weights * math.pow(2, quant_weights['RadixWeights'])
+        scaled_weights = (filter_weights *
+                          math.pow(2, quant_weights['RadixWeights']))
         quant_weights['Weights'] = scaled_weights.astype(dtype.as_numpy_dtype())
 
         print("Weights radix [%d], multiplier [%f]" %
@@ -458,84 +438,70 @@ class Conv2DLayer(BaseLayer):
             quant_weights['RadixOutput'] = fixed_radix
         else:
             output_min = np.min(np.array(conv2d_result))
-            output_max= np.max(np.array(conv2d_result))
+            output_max = np.max(np.array(conv2d_result))
             quant_weights['RadixOutput'] = BaseLayer.optimal_radix(output_min,
                                                                    output_max,
                                                                    dtype)
 
         quant_weights['PostMMShift'] =\
-            (input_radix_point + quant_weights['RadixWeights']) - quant_weights['RadixOutput']
+            (input_radix_point +
+             quant_weights['RadixWeights']) - quant_weights['RadixOutput']
 
         return quant_weights
 
+
 class TrainingCrossEntropy:
 
-    def __init__(self,
-                 model_lables,
-                 training_labels,
-                 optimizer=tf.train.AdamOptimizer,
-                 learning_rate=0.001):
+  def __init__(self,
+               model_lables,
+               training_labels,
+               optimizer=tf.compat.v1.train.AdamOptimizer,
+               learning_rate=0.001):
 
-        with tf.name_scope('training'):
+    with tf.name_scope('training'):
+      self.loss = tf.compat.v1.losses.sparse_softmax_cross_entropy(
+        labels=training_labels, logits=model_lables
+      )
 
-            self.loss = tf.losses.sparse_softmax_cross_entropy(
-              labels=training_labels, logits=model_lables
-            )
-            tf.summary.scalar('cross_entropy_loss', self.loss)
-
-            self.train_step = optimizer(learning_rate).minimize(self.loss)
+      self.train_step = optimizer(learning_rate).minimize(self.loss)
 
 
 class ClassificationAccuracy:
 
-    def __init__(self, model_output, training):
-
-        with tf.name_scope('accuracy'):
-            correct_prediction = tf.equal(tf.argmax(model_output, 1),
-                                          training, name='correct_prediction')
-            self.accuracy = tf.reduce_mean(tf.cast(correct_prediction,
-                                                   tf.float32), name='accuracy')
-        tf.summary.scalar('accuracy', self.accuracy)
+  def __init__(self, model_output, training):
+    with tf.name_scope('accuracy'):
+      correct_prediction = tf.equal(tf.argmax(model_output, 1),
+                                    training, name='correct_prediction')
+      self.accuracy = tf.reduce_mean(tf.cast(correct_prediction,
+                                             tf.float32), name='accuracy')
 
 
 def train_model(sess,
                 train_step,
                 feed_fn,
                 quality_metric,
-                log_dir,
                 quality_label="Quality Metric",
                 count=1000,
                 training_label="Training Model"):
 
-    # setup training summaries and writers
-    merged = tf.summary.merge_all()
-    train_writer = tf.summary.FileWriter(log_dir + '/train', sess.graph)
-    test_writer = tf.summary.FileWriter(log_dir + '/test')
+  quality = 0.0
+  for i in range(count):
 
-    quality = 0.0
-    for i in range(count):
+    _ = sess.run([train_step], feed_dict=feed_fn(True))
 
-        # Train the model with a batch and update the training summary writer
-        summary, _ = sess.run([merged, train_step], feed_dict=feed_fn(True))
-        train_writer.add_summary(summary, i)
+    # every 10th step calculate the accurary
+    if i % 10 == 0:  # Record test-set accuracy
+      quality = sess.run([quality_metric],
+                         feed_dict=feed_fn(False))
+      pb.update_progress_bar(i / float(count),
+                             pre_msg=" " + training_label,
+                             post_msg='%s is %s' % (quality_label,
+                                                    quality),
+                             size=40)
 
-        # every 10th step calculate the accurary and update
-        # summary and progress bar
-        if i % 10 == 0:  # Record summaries and test-set accuracy
-            summary, quality = sess.run([merged, quality_metric],
-                                        feed_dict=feed_fn(False))
-            test_writer.add_summary(summary, i)
-            pb.update_progress_bar(i / float(count),
-                                   pre_msg=" " + training_label,
-                                   post_msg='%s is %s' % (quality_label,
-                                                          quality),
-                                   size=40)
-
-    # Add final progress bar update at 100% and close summary writers
-    pb.update_progress_bar(1.0,
-                           pre_msg=" " + training_label,
-                           post_msg='%s is %s' % (quality_label, quality),
-                           size=40,
-                           c_return='\n')
-    train_writer.close()
-    test_writer.close()
+  # Add final progress bar update at 100% and close summary writers
+  pb.update_progress_bar(1.0,
+                         pre_msg=" " + training_label,
+                         post_msg='%s is %s' % (quality_label, quality),
+                         size=40,
+                         c_return='\n')
