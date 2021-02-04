@@ -1,21 +1,22 @@
 # TFMin - Minimal TensorFlow
 
-A library to export light weight c++ implementations of TensorFlow graphs, for use on
+A library to export light weight ansi-c implementations of TensorFlow graphs, for use on
 micro-processor and embedded systems.
 
 ## Overview
 
-The TFMin library allows you to convert a TensorFlow graph within a python script into a c++
-implementation with only standard library dependencies. This allows the produced c++ code
+The TFMin library allows you to convert a TensorFlow graph within a python script into an ansi-c
+implementation with no library dependencies. This allows the generated c code
 to be compiled on small computer systems and embbedded systems. Unlike the standard c++
 implementation of TensorFlow which is already available the binaries produced by TFMin
 do not have dependencies on large shared object libraries. These dependencies can make 
 implementing this code on embedded systems, difficult or impossible.
 
-There are two parts to this package, a python library that is used to analyse and export
-the flow graph to c++ code and a header only c++ library containing the operations that
-is needed to compile the generated code. An example in provided where an MNIST classifier
+This package is a python tool that is used to analyse and export
+the flow graphs to ansi-c code. An example is provided where an MNIST classifier
 is trained using TensorFlow python then exported to c++ and built into a native binary.
+Tensorflow lite flatbuffers are also directly supported meaning a wide range of pre-built
+models can easily be imported and deployed.
 
 This open source software has been developed during my PhD research at the Surrey Space 
 Centre, at Surrey University and made possible by support from Airbus.
@@ -26,9 +27,7 @@ Centre, at Surrey University and made possible by support from Airbus.
 
 ## Installation Instructions
 
-Clone this repository and run the **install.bash** script. This simply adds the required
-locations to your PYTHONPATH and CPLUS_INCLUDE_PATH environment variables, the script will
-need write access to your **.bashrc** file.
+Clone this repository and add the required locations to your PYTHONPATH.
 
 ## Licence
 
